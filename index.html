@@ -1353,15 +1353,11 @@ If Python is not installed on this machine:
     }
 
     function sfvHelpText(current) {
-      const value = (current || "").toUpperCase();
-      const currentText = value ? ("Current: " + value + ". ") : "";
-      return currentText + "SFV = Spam Filtering Verdict. Options: NSPM = non-spam, SPM = marked spam, SFE = skipped and allowed due to Safe Senders, SKA = allowed due to tenant allow list/policy, SKB = blocked due to tenant block list/policy, SKN = non-spam set before filtering (often SCL -1 bypass), SKQ = released from quarantine, SKS = spam set before filtering (often via rule), BLK = skipped and blocked due to user Blocked Senders.";
+      return "SFV = Spam Filtering Verdict. Options: NSPM = non-spam, SPM = marked spam, SFE = skipped and allowed due to Safe Senders, SKA = allowed due to tenant allow list/policy, SKB = blocked due to tenant block list/policy, SKN = non-spam set before filtering (often SCL -1 bypass), SKQ = released from quarantine, SKS = spam set before filtering (often via rule), BLK = skipped and blocked due to user Blocked Senders.";
     }
 
     function catHelpText(current) {
-      const value = (current || "").toUpperCase();
-      const currentText = value ? ("Current: " + value + ". ") : "";
-      return currentText + "CAT = Category (threat policy category). Options: NONE = no category, HSPM = high-confidence spam, SPM = spam, BULK = bulk/gray mail, HPHSH/HPHISH = high-confidence phishing, PHSH = phishing, MALW = malware, BIMP = brand impersonation, DIMP = domain impersonation, GIMP = mailbox intelligence impersonation, INTOS = intra-org phishing, OSPM = outbound spam, AMP/FTBP = malware policy triggers.";
+      return "CAT = Category (threat policy category). Options: NONE = no category, HSPM = high-confidence spam, SPM = spam, BULK = bulk/gray mail, HPHSH/HPHISH = high-confidence phishing, PHSH = phishing, MALW = malware, BIMP = brand impersonation, DIMP = domain impersonation, GIMP = mailbox intelligence impersonation, INTOS = intra-org phishing, OSPM = outbound spam, AMP/FTBP = malware policy triggers.";
     }
 
     function hopDelayTone(delayMs) {
