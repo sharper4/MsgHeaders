@@ -1569,8 +1569,7 @@ If Python is not installed on this machine:
         ["Date", parsed.envelope.date],
         ["Message-ID", parsed.envelope.messageId],
         ["Return-Path", parsed.envelope.returnPath],
-        ["Reply-To", parsed.envelope.replyTo],
-        ["X-Originating-IP", parsed.envelope.xOriginatingIp]
+        ["Reply-To", parsed.envelope.replyTo]
       ];
       for (const [label, value] of detailRows) {
         lines.push(label + ": " + (value || "n/a"));
