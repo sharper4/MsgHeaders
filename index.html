@@ -367,6 +367,16 @@ If Python is not installed on this machine:
       word-break: break-word;
     }
 
+    .header-row.attention {
+      background: rgba(39, 92, 136, 0.42);
+      box-shadow: inset 0 0 0 1px #6fa3ce;
+    }
+
+    .header-row.attention .header-key,
+    .header-row.attention .header-value {
+      color: #f3fbff;
+    }
+
     th {
       position: sticky;
       top: 0;
@@ -914,6 +924,7 @@ If Python is not installed on this machine:
         const values = (headerMap[key] || []).map(escapeHtml).join("<br>");
         const row = document.createElement("div");
         row.className = "header-row";
+        row.dataset.headerKey = key;
         row.innerHTML = "<div class=\"header-key\">" + escapeHtml(key) + "</div><div class=\"header-value\">" + values + "</div>";
         container.appendChild(row);
       }
@@ -1088,7 +1099,19 @@ If Python is not installed on this machine:
       if (v === "SPM") {
         return "bad";
       }
+      if (v === "BLK") {
+        return "bad";
+      }
+      if (v === "SKS" || v === "SKN") {
+        return "ok";
+      }
       return "warn";
+    }
+
+    function sfvHelpText(current) {
+      const value = (current || "").toUpperCase();
+      const currentText = value ? ("Current: " + value + ". ") : "";
+      return currentText + "SFV options commonly seen in Microsoft headers: NSPM = not spam, SPM = spam, SKS = skipped (safe sender), SKN = skipped (trusted/internal), BLK = blocked, SFE = spam filtering evaluated/enforced (meaning can vary by tenant flow).";
     }
 
     function classifyHostLabel(text) {
@@ -1189,6 +1212,11 @@ If Python is not installed on this machine:
           setTimeout(function () {
             item.textContent = original;
           }, 900);
+          return;
+        }
+
+        if (action.type === "jumpHeader") {
+          jumpToHeader(action.headerKeys || [], action.fallbackId || "spamSection");
         }
       });
 
@@ -1241,6 +1269,68 @@ If Python is not installed on this machine:
       ui.toggleHopChain.textContent = isExpanded ? "Show Less" : "Show More";
     }
 
+    let rowHighlightTimer = null;
+
+    function findHeaderRowByKey(headerKey) {
+      if (!headerKey) {
+        return null;
+      }
+      const selector = '.header-row[data-header-key="' + headerKey.toLowerCase() + '"]';
+      return ui.spamHeaders.querySelector(selector) || ui.otherHeaders.querySelector(selector);
+    }
+
+    function ensureHeaderListExpanded(row) {
+      if (!row) {
+        return;
+      }
+      if (ui.spamHeaders.contains(row) && !ui.spamHeaders.classList.contains("expanded")) {
+        toggleHeaderList(ui.spamHeaders, ui.toggleSpamHeaders);
+      }
+      if (ui.otherHeaders.contains(row) && !ui.otherHeaders.classList.contains("expanded")) {
+        toggleHeaderList(ui.otherHeaders, ui.toggleOtherHeaders);
+      }
+    }
+
+    function highlightHeaderRow(row) {
+      if (!row) {
+        return;
+      }
+
+      document.querySelectorAll(".header-row.attention").forEach(function (el) {
+        el.classList.remove("attention");
+      });
+
+      row.classList.add("attention");
+      if (rowHighlightTimer) {
+        clearTimeout(rowHighlightTimer);
+      }
+      rowHighlightTimer = setTimeout(function () {
+        row.classList.remove("attention");
+      }, 5000);
+    }
+
+    function jumpToHeader(headerKeys, fallbackId) {
+      let row = null;
+      for (const key of headerKeys) {
+        row = findHeaderRowByKey(key);
+        if (row) {
+          break;
+        }
+      }
+
+      if (row) {
+        ensureHeaderListExpanded(row);
+        row.scrollIntoView({ behavior: "smooth", block: "center" });
+        highlightHeaderRow(row);
+        return;
+      }
+
+      const fallback = document.getElementById(fallbackId);
+      if (fallback) {
+        fallback.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }
+
     function renderSummary(parsed) {
       ui.routingPills.innerHTML = "";
       ui.authPills.innerHTML = "";
@@ -1255,47 +1345,87 @@ If Python is not installed on this machine:
       resetHeaderListExpansion();
       resetHopChainExpansion();
 
-      renderPill(
+      renderActionPill(
         ui.routingPills,
         "Hops: " + parsed.hops.length,
         parsed.hops.length ? "ok" : "warn",
-        "Total number of Received hops found in the header chain."
+        {
+          type: "jumpHeader",
+          hint: "Jump to Received headers in full readout.",
+          headerKeys: ["received"],
+          fallbackId: "routingSection"
+        }
       );
-      renderPill(
+      renderActionPill(
         ui.routingPills,
         "End-to-End: " + formatDuration(parsed.totalTransitMs),
         parsed.totalTransitMs ? "ok" : "warn",
-        "Estimated end-to-end delivery time from Received headers."
+        {
+          type: "jumpHeader",
+          hint: "Jump to Received headers in full readout.",
+          headerKeys: ["received"],
+          fallbackId: "routingSection"
+        }
       );
 
-      renderPill(ui.authPills, "SPF: " + parsed.auth.spf, classifyResult(parsed.auth.spf), "SPF: pass = sender identity validated; fail = high suspicion; softfail = investigate; none = common, but worth investigating.");
-      renderPill(ui.authPills, "DKIM: " + parsed.auth.dkim, classifyResult(parsed.auth.dkim), "DKIM: pass = signature validated; fail = mismatch or potential tampering; none = unsigned.");
-      renderPill(ui.authPills, "DMARC: " + parsed.auth.dmarc, classifyResult(parsed.auth.dmarc), "DMARC: pass = aligned sender identity; fail = policy/auth alignment failed.");
-      renderPill(
+      renderActionPill(ui.authPills, "SPF: " + parsed.auth.spf, classifyResult(parsed.auth.spf), {
+        type: "jumpHeader",
+        hint: "SPF: pass = sender identity validated; fail = high suspicion; softfail = investigate; none = common, but worth investigating. Click to jump to Authentication-Results.",
+        headerKeys: ["authentication-results", "auth-results", "received-spf"],
+        fallbackId: "spamSection"
+      });
+      renderActionPill(ui.authPills, "DKIM: " + parsed.auth.dkim, classifyResult(parsed.auth.dkim), {
+        type: "jumpHeader",
+        hint: "DKIM: pass = signature validated; fail = mismatch or potential tampering; none = unsigned. Click to jump to Authentication-Results.",
+        headerKeys: ["authentication-results", "auth-results", "dkim-signature"],
+        fallbackId: "spamSection"
+      });
+      renderActionPill(ui.authPills, "DMARC: " + parsed.auth.dmarc, classifyResult(parsed.auth.dmarc), {
+        type: "jumpHeader",
+        hint: "DMARC: pass = aligned sender identity; fail = policy/auth alignment failed. Click to jump to Authentication-Results.",
+        headerKeys: ["authentication-results", "auth-results"],
+        fallbackId: "spamSection"
+      });
+      renderActionPill(
         ui.authPills,
         "CompAuth: " + parsed.auth.compauth + (parsed.auth.compauthReason ? " (Reason " + parsed.auth.compauthReason + ")" : ""),
         classifyResult(parsed.auth.compauth),
-        "Composite Authentication (Microsoft): pass indicates overall identity confidence; fail indicates elevated suspicion."
+        {
+          type: "jumpHeader",
+          hint: "Composite Authentication (Microsoft): pass indicates overall identity confidence; fail indicates elevated suspicion. Click to jump to Authentication-Results.",
+          headerKeys: ["authentication-results", "auth-results"],
+          fallbackId: "spamSection"
+        }
       );
 
       const iron = parsed.policySignals;
       let ironCount = 0;
       if (iron.ironPortPolicy) {
         ironCount += 1;
-        renderPill(
+        renderActionPill(
           ui.ironPortPills,
           "MailFlowPolicy: " + iron.ironPortPolicy,
           classifyIronPortPolicy(iron.ironPortPolicy),
-          "X-IronPort-MailFlowPolicy. Accepted/Allow usually indicates clean flow. Reject/Quarantine/Block are higher-risk outcomes."
+          {
+            type: "jumpHeader",
+            hint: "X-IronPort-MailFlowPolicy. Accepted/Allow usually indicates clean flow. Reject/Quarantine/Block are higher-risk outcomes. Click to jump to this header.",
+            headerKeys: ["x-ironport-mailflowpolicy"],
+            fallbackId: "spamSection"
+          }
         );
       }
       if (iron.threatScannerVerdict) {
         ironCount += 1;
-        renderPill(
+        renderActionPill(
           ui.ironPortPills,
           "ThreatScannerVerdict: " + iron.threatScannerVerdict,
           classifyThreatScannerVerdict(iron.threatScannerVerdict),
-          "X-ThreatScannerVerdict. Negative/Clean are lower risk. Positive/Malicious/Phish/Spam indicate higher risk."
+          {
+            type: "jumpHeader",
+            hint: "X-ThreatScannerVerdict. Negative/Clean are lower risk. Positive/Malicious/Phish/Spam indicate higher risk. Click to jump to this header.",
+            headerKeys: ["x-threatscannerverdict"],
+            fallbackId: "spamSection"
+          }
         );
       }
       ui.ironPortSectionBlock.style.display = ironCount ? "block" : "none";
@@ -1304,23 +1434,48 @@ If Python is not installed on this machine:
       let msCount = 0;
       if (ms.scl) {
         msCount += 1;
-        renderPill(ui.microsoftPills, "SCL: " + ms.scl, classifyScl(ms.scl), "SCL scale: -1 bypass spam filtering; 0 not spam; 1 very low confidence; 5-6 spam; 7-9 high confidence spam.");
+        renderActionPill(ui.microsoftPills, "SCL: " + ms.scl, classifyScl(ms.scl), {
+          type: "jumpHeader",
+          hint: "SCL scale: -1 bypass spam filtering; 0 not spam; 1 very low confidence; 5-6 spam; 7-9 high confidence spam. Click to jump to related header.",
+          headerKeys: ["x-ms-exchange-organization-scl", "x-forefront-antispam-report"],
+          fallbackId: "spamSection"
+        });
       }
       if (ms.bcl) {
         msCount += 1;
-        renderPill(ui.microsoftPills, "BCL: " + ms.bcl, classifyBcl(ms.bcl), "BCL scale: 0-3 not bulk; 4-6 marketing/newsletter; 7-9 very bulk-like.");
+        renderActionPill(ui.microsoftPills, "BCL: " + ms.bcl, classifyBcl(ms.bcl), {
+          type: "jumpHeader",
+          hint: "BCL scale: 0-3 not bulk; 4-6 marketing/newsletter; 7-9 very bulk-like. Click to jump to related header.",
+          headerKeys: ["x-ms-exchange-organization-bcl", "x-microsoft-antispam-bcl", "x-forefront-antispam-report"],
+          fallbackId: "spamSection"
+        });
       }
       if (ms.pcl) {
         msCount += 1;
-        renderPill(ui.microsoftPills, "Phish Score (PCL): " + ms.pcl, classifyPcl(ms.pcl), "PCL indicates phishing confidence. Higher values indicate stronger phishing likelihood.");
+        renderActionPill(ui.microsoftPills, "Phish Score (PCL): " + ms.pcl, classifyPcl(ms.pcl), {
+          type: "jumpHeader",
+          hint: "PCL indicates phishing confidence. Higher values indicate stronger phishing likelihood. Click to jump to related header.",
+          headerKeys: ["x-ms-exchange-organization-pcl", "x-microsoft-antispam-pcl", "x-forefront-antispam-report"],
+          fallbackId: "spamSection"
+        });
       }
       if (ms.sfv) {
         msCount += 1;
-        renderPill(ui.microsoftPills, "SFV: " + ms.sfv, classifySfv(ms.sfv), "SFV = spam filter verdict.");
+        renderActionPill(ui.microsoftPills, "SFV: " + ms.sfv, classifySfv(ms.sfv), {
+          type: "jumpHeader",
+          hint: sfvHelpText(ms.sfv),
+          headerKeys: ["x-ms-exchange-organization-sfv", "x-forefront-antispam-report"],
+          fallbackId: "spamSection"
+        });
       }
       if (ms.cat) {
         msCount += 1;
-        renderPill(ui.microsoftPills, "CAT: " + ms.cat, classifyCat(ms.cat), "CAT categories: NONE clean, PHISH phishing, MALW malware, SPAM spam.");
+        renderActionPill(ui.microsoftPills, "CAT: " + ms.cat, classifyCat(ms.cat), {
+          type: "jumpHeader",
+          hint: "CAT categories: NONE clean, PHISH phishing, MALW malware, SPAM spam. Click to jump to related header.",
+          headerKeys: ["x-ms-exchange-organization-antispam-report", "x-forefront-antispam-report"],
+          fallbackId: "spamSection"
+        });
       }
       ui.microsoftSectionBlock.style.display = msCount ? "block" : "none";
 
