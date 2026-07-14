@@ -1038,6 +1038,7 @@ If Python is not installed on this machine:
     function extractEnvelopeData(headers) {
       const from = firstHeaderValue(headers, "from");
       const to = firstHeaderValue(headers, "to");
+      const cc = firstHeaderValue(headers, "cc");
       const subject = firstHeaderValue(headers, "subject");
       const messageId = firstHeaderValue(headers, "message-id");
       const date = firstHeaderValue(headers, "date");
@@ -1048,6 +1049,7 @@ If Python is not installed on this machine:
       return {
         from,
         to,
+        cc,
         subject,
         messageId,
         date,
@@ -1646,6 +1648,7 @@ If Python is not installed on this machine:
       const detailRows = [
         ["From", parsed.envelope.from],
         ["To", parsed.envelope.to],
+        ["Cc", parsed.envelope.cc],
         ["Subject", parsed.envelope.subject],
         ["Date", parsed.envelope.date],
         ["Message-ID", parsed.envelope.messageId],
@@ -1729,6 +1732,7 @@ If Python is not installed on this machine:
       const detailRows = [
         ["From", parsed.envelope.from],
         ["To", parsed.envelope.to],
+        ["Cc", parsed.envelope.cc],
         ["Subject", parsed.envelope.subject],
         ["Date", parsed.envelope.date],
         ["Message-ID", parsed.envelope.messageId],
