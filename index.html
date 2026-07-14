@@ -581,7 +581,7 @@ If Python is not installed on this machine:
         <h3 class="heading-line">Key Header Values</h3>
         <dl id="headerDetails" class="kv-grid"></dl>
 
-        <h3 class="heading-line">Potential Findings</h3>
+        <h3 class="heading-line with-action"><span>Potential Findings</span><button id="copyFindingsBtn" class="section-toggle" type="button">Copy Findings</button></h3>
         <ul id="findings" class="flags"></ul>
       </article>
 
@@ -653,6 +653,7 @@ If Python is not installed on this machine:
       clearBtn: document.getElementById("clearBtn"),
       sampleBtn: document.getElementById("sampleBtn"),
       copyResultsBtn: document.getElementById("copyResultsBtn"),
+      copyFindingsBtn: document.getElementById("copyFindingsBtn"),
       scrollTopBtn: document.getElementById("scrollTopBtn"),
       resultsShell: document.getElementById("resultsShell"),
       routingPills: document.getElementById("routingPills"),
@@ -676,7 +677,7 @@ If Python is not installed on this machine:
     ui.ironPortSectionBlock.style.display = "none";
     ui.microsoftSectionBlock.style.display = "none";
 
-  let currentParsed = null;
+    let currentParsed = null;
 
     const SAMPLE_HEADERS = [
       "Received: from mail-io1-f42.google.com (mail-io1-f42.google.com [209.85.166.42]) by NAM11-CO1-obe.outbound.protection.outlook.com (10.152.32.179) with Microsoft SMTP Server (version=TLS1_2, cipher=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384) id 15.20.8517.24 via Frontend Transport; Tue, 14 Jul 2026 10:18:20 +0000",
@@ -1479,6 +1480,32 @@ If Python is not installed on this machine:
       return messageId.slice(0, head) + "..." + messageId.slice(-tail);
     }
 
+    function formatGmtOffset(dateValue) {
+      const totalMinutes = -dateValue.getTimezoneOffset();
+      const sign = totalMinutes >= 0 ? "+" : "-";
+      const absoluteMinutes = Math.abs(totalMinutes);
+      const hours = String(Math.floor(absoluteMinutes / 60)).padStart(2, "0");
+      const minutes = String(absoluteMinutes % 60).padStart(2, "0");
+      return "GMT" + sign + hours + ":" + minutes;
+    }
+
+    function formatLocalDateRecap(headerDate) {
+      if (!headerDate) {
+        return "";
+      }
+      const parsedDate = new Date(headerDate);
+      if (Number.isNaN(parsedDate.getTime())) {
+        return "";
+      }
+
+      const localText = new Intl.DateTimeFormat(undefined, {
+        dateStyle: "medium",
+        timeStyle: "long"
+      }).format(parsedDate);
+      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Local";
+      return localText + ", " + timeZone + ", " + formatGmtOffset(parsedDate);
+    }
+
     function createCopyIconButton(label, value) {
       const btn = document.createElement("button");
       btn.type = "button";
@@ -1550,6 +1577,14 @@ If Python is not installed on this machine:
         lines.push("ThreatScannerVerdict: " + parsed.policySignals.threatScannerVerdict);
       }
       lines.push("Route: " + buildRouteStory(parsed.hops).join(" -> "));
+      return lines.join("\n");
+    }
+
+    function formatPlainFindingsReport(parsed) {
+      const lines = ["Potential Findings", ""];
+      for (const finding of parsed.findings) {
+        lines.push("- " + finding);
+      }
       return lines.join("\n");
     }
 
@@ -1645,6 +1680,24 @@ If Python is not installed on this machine:
       const htmlText = formatHtmlResultsReport(currentParsed);
       const copied = await copyClipboardPayload(plainText, htmlText);
       setButtonFeedback(ui.copyResultsBtn, copied ? "Copied" : "Copy failed", "Copy failed");
+    }
+
+    async function copyFindingsReport() {
+      if (!currentParsed) {
+        setButtonFeedback(ui.copyFindingsBtn, "No Findings", "No Findings");
+        return;
+      }
+
+      const plainText = formatPlainFindingsReport(currentParsed);
+      const htmlText = "<div style=\"font-family:Segoe UI,Aptos,Tahoma,sans-serif;color:#102a43;line-height:1.45;\">" +
+        "<h3 style=\"margin:0 0 10px;color:#12344d;font-size:16px;\">Potential Findings</h3>" +
+        "<ul style=\"margin:0 0 0 18px;padding:0;\">" +
+        currentParsed.findings.map(function (finding) {
+          return "<li style=\"margin:0 0 6px;\">" + escapeHtml(finding) + "</li>";
+        }).join("") +
+        "</ul></div>";
+      const copied = await copyClipboardPayload(plainText, htmlText);
+      setButtonFeedback(ui.copyFindingsBtn, copied ? "Copied" : "Copy failed", "Copy failed");
     }
 
     function resetHeaderListExpansion() {
@@ -1906,7 +1959,12 @@ If Python is not installed on this machine:
         wrap.className = "value-with-copy";
 
         const valueSpan = document.createElement("span");
-        valueSpan.textContent = value || "n/a";
+        if (label === "Date") {
+          const recap = formatLocalDateRecap(value);
+          valueSpan.textContent = value ? (recap ? value + " (" + recap + ")" : value) : "n/a";
+        } else {
+          valueSpan.textContent = value || "n/a";
+        }
         wrap.appendChild(valueSpan);
         wrap.appendChild(createCopyIconButton(label, value || ""));
         dd.appendChild(wrap);
@@ -2019,6 +2077,7 @@ If Python is not installed on this machine:
       analyze();
     });
     ui.copyResultsBtn.addEventListener("click", copyResultsReport);
+    ui.copyFindingsBtn.addEventListener("click", copyFindingsReport);
     ui.scrollTopBtn.addEventListener("click", function () {
       document.querySelector(".hero").scrollIntoView({ behavior: "smooth", block: "start" });
     });
