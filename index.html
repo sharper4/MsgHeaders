@@ -1489,6 +1489,36 @@ If Python is not installed on this machine:
       return "GMT" + sign + hours + ":" + minutes;
     }
 
+    function parseHeaderUtcOffsetMinutes(headerDate) {
+      if (!headerDate) {
+        return null;
+      }
+
+      const match = headerDate.match(/([+-])(\d{2})(\d{2})\s*$/);
+      if (!match) {
+        return null;
+      }
+
+      const sign = match[1] === "+" ? 1 : -1;
+      const hours = parseInt(match[2], 10);
+      const minutes = parseInt(match[3], 10);
+      return sign * ((hours * 60) + minutes);
+    }
+
+    function formatDateForZone(dateValue, timeZone) {
+      return new Intl.DateTimeFormat(undefined, {
+        timeZone: timeZone,
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: true,
+        timeZoneName: timeZone === "UTC" ? undefined : "short"
+      }).format(dateValue);
+    }
+
     function formatLocalDateRecap(headerDate) {
       if (!headerDate) {
         return "";
@@ -1498,12 +1528,16 @@ If Python is not installed on this machine:
         return "";
       }
 
-      const localText = new Intl.DateTimeFormat(undefined, {
-        dateStyle: "medium",
-        timeStyle: "long"
-      }).format(parsedDate);
-      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Local";
-      return localText + ", " + timeZone + ", " + formatGmtOffset(parsedDate);
+      const originalOffsetMinutes = parseHeaderUtcOffsetMinutes(headerDate);
+      const localOffsetMinutes = -parsedDate.getTimezoneOffset();
+      const localText = formatDateForZone(parsedDate);
+      const gmtText = formatDateForZone(parsedDate, "UTC") + " GMT";
+
+      if (originalOffsetMinutes !== null && originalOffsetMinutes === localOffsetMinutes) {
+        return "translated to " + gmtText;
+      }
+
+      return "translated to local time of " + localText + " or " + gmtText;
     }
 
     function createCopyIconButton(label, value) {
