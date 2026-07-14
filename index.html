@@ -1553,6 +1553,29 @@ If Python is not installed on this machine:
       return lines.join("\n");
     }
 
+    function exportToneColors(tone) {
+      const tones = {
+        ok: { bg: "#dff6ea", border: "#b5e3ca", text: "#0f5132" },
+        warn: { bg: "#fff3dc", border: "#ffde9c", text: "#6a4104" },
+        bad: { bg: "#fee4e2", border: "#f7b5b1", text: "#7f1d1d" },
+        phish: { bg: "#ffedd5", border: "#fdba74", text: "#7a3412" },
+        muted: { bg: "#e7f0f8", border: "#bfd2e2", text: "#35506b" }
+      };
+      return tones[tone] || tones.muted;
+    }
+
+    function exportPillHtml(text, tone) {
+      const colors = exportToneColors(tone);
+      return "<span style=\"display:inline-block;margin:0 8px 8px 0;padding:6px 10px;border-radius:999px;border:1px solid " + colors.border + ";background:" + colors.bg + ";color:" + colors.text + ";font-size:12px;font-weight:700;line-height:1.25;\">" + escapeHtml(text) + "</span>";
+    }
+
+    function exportSectionHtml(title, bodyHtml) {
+      return "<div style=\"margin:0 0 14px;padding:14px 16px;border:1px solid #d8e3ee;border-radius:14px;background:#f8fbfe;\">" +
+        "<h3 style=\"margin:0 0 10px;color:#12344d;font-size:16px;\">" + escapeHtml(title) + "</h3>" +
+        bodyHtml +
+        "</div>";
+    }
+
     function formatHtmlResultsReport(parsed) {
       const detailRows = [
         ["From", parsed.envelope.from],
@@ -1565,45 +1588,51 @@ If Python is not installed on this machine:
         ["X-Originating-IP", parsed.envelope.xOriginatingIp]
       ];
       const ms = parsed.policySignals.forefront;
-      const signalLines = [
-        ["Hops", String(parsed.hops.length)],
-        ["End-to-End", formatDuration(parsed.totalTransitMs)],
-        ["SPF", parsed.auth.spf],
-        ["DKIM", parsed.auth.dkim],
-        ["DMARC", parsed.auth.dmarc],
-        ["CompAuth", parsed.auth.compauth + (parsed.auth.compauthReason ? " (Reason " + parsed.auth.compauthReason + ")" : "")],
-        ["SCL", ms.scl],
-        ["BCL", ms.bcl],
-        ["PCL", ms.pcl],
-        ["SFV", ms.sfv],
-        ["CAT", ms.cat],
-        ["MailFlowPolicy", parsed.policySignals.ironPortPolicy],
-        ["ThreatScannerVerdict", parsed.policySignals.threatScannerVerdict],
-        ["Route", buildRouteStory(parsed.hops).join(" -> ")]
-      ].filter(function (entry) {
-        return entry[1];
-      });
+      const authPills = [
+        exportPillHtml("Hops: " + parsed.hops.length, parsed.hops.length ? "ok" : "warn"),
+        exportPillHtml("End-to-End: " + formatDuration(parsed.totalTransitMs), parsed.totalTransitMs ? "ok" : "warn"),
+        exportPillHtml("SPF: " + parsed.auth.spf, classifyResult(parsed.auth.spf)),
+        exportPillHtml("DKIM: " + parsed.auth.dkim, classifyResult(parsed.auth.dkim)),
+        exportPillHtml("DMARC: " + parsed.auth.dmarc, classifyResult(parsed.auth.dmarc)),
+        exportPillHtml("CompAuth: " + parsed.auth.compauth + (parsed.auth.compauthReason ? " (Reason " + parsed.auth.compauthReason + ")" : ""), classifyResult(parsed.auth.compauth))
+      ].join("");
 
-      return "<div style=\"font-family:Segoe UI,Aptos,Tahoma,sans-serif;color:#102a43;line-height:1.45;\">" +
-        "<h2 style=\"margin:0 0 12px;\">Email Header Analyzer Results</h2>" +
-        "<h3 style=\"margin:16px 0 8px;\">Key Header Values</h3>" +
-        "<table style=\"border-collapse:collapse;width:100%;max-width:900px;\">" +
+      const microsoftPills = [
+        ms.scl ? exportPillHtml("SCL: " + ms.scl, classifyScl(ms.scl)) : "",
+        ms.bcl ? exportPillHtml("BCL: " + ms.bcl, classifyBcl(ms.bcl)) : "",
+        ms.pcl ? exportPillHtml("PCL: " + ms.pcl, classifyPcl(ms.pcl)) : "",
+        ms.sfv ? exportPillHtml("SFV: " + ms.sfv, classifySfv(ms.sfv)) : "",
+        ms.cat ? exportPillHtml("CAT: " + ms.cat, classifyCat(ms.cat)) : ""
+      ].join("");
+
+      const ironPortPills = [
+        parsed.policySignals.ironPortPolicy ? exportPillHtml("MailFlowPolicy: " + parsed.policySignals.ironPortPolicy, classifyIronPortPolicy(parsed.policySignals.ironPortPolicy)) : "",
+        parsed.policySignals.threatScannerVerdict ? exportPillHtml("ThreatScannerVerdict: " + parsed.policySignals.threatScannerVerdict, classifyThreatScannerVerdict(parsed.policySignals.threatScannerVerdict)) : ""
+      ].join("");
+
+      const detailTable = "<table style=\"border-collapse:collapse;width:100%;max-width:900px;\">" +
         detailRows.map(function (row) {
-          return "<tr><td style=\"padding:4px 10px 4px 0;font-weight:700;vertical-align:top;white-space:nowrap;\">" + escapeHtml(row[0]) + "</td><td style=\"padding:4px 0;\">" + escapeHtml(row[1] || "n/a") + "</td></tr>";
+          return "<tr><td style=\"padding:4px 10px 4px 0;font-weight:700;vertical-align:top;white-space:nowrap;color:#486581;\">" + escapeHtml(row[0]) + "</td><td style=\"padding:4px 0;color:#102a43;\">" + escapeHtml(row[1] || "n/a") + "</td></tr>";
         }).join("") +
-        "</table>" +
-        "<h3 style=\"margin:16px 0 8px;\">Potential Findings</h3>" +
-        "<ul style=\"margin:0 0 0 18px;padding:0;\">" +
+        "</table>";
+
+      const findingsList = "<ul style=\"margin:0 0 0 18px;padding:0;color:#102a43;\">" +
         parsed.findings.map(function (finding) {
           return "<li style=\"margin:0 0 6px;\">" + escapeHtml(finding) + "</li>";
         }).join("") +
-        "</ul>" +
-        "<h3 style=\"margin:16px 0 8px;\">Authentication & Routing</h3>" +
-        "<table style=\"border-collapse:collapse;width:100%;max-width:900px;\">" +
-        signalLines.map(function (row) {
-          return "<tr><td style=\"padding:4px 10px 4px 0;font-weight:700;vertical-align:top;white-space:nowrap;\">" + escapeHtml(row[0]) + "</td><td style=\"padding:4px 0;\">" + escapeHtml(row[1]) + "</td></tr>";
-        }).join("") +
-        "</table>" +
+        "</ul>";
+
+      const routingHtml =
+        "<div style=\"margin:0 0 8px;\">" + authPills + "</div>" +
+        (microsoftPills ? "<div style=\"margin:8px 0 0;\"><div style=\"margin:0 0 6px;font-size:12px;font-weight:700;color:#486581;text-transform:uppercase;letter-spacing:0.4px;\">Microsoft Threat Signals</div>" + microsoftPills + "</div>" : "") +
+        (ironPortPills ? "<div style=\"margin:8px 0 0;\"><div style=\"margin:0 0 6px;font-size:12px;font-weight:700;color:#486581;text-transform:uppercase;letter-spacing:0.4px;\">IronPort Signals</div>" + ironPortPills + "</div>" : "") +
+        "<div style=\"margin:12px 0 0;padding:10px 12px;border:1px solid #d8e3ee;border-radius:10px;background:#ffffff;color:#102a43;\"><strong>Route:</strong> " + escapeHtml(buildRouteStory(parsed.hops).join(" -> ")) + "</div>";
+
+      return "<div style=\"font-family:Segoe UI,Aptos,Tahoma,sans-serif;color:#102a43;line-height:1.45;background:#eef4f8;padding:18px;border-radius:16px;\">" +
+        "<h2 style=\"margin:0 0 14px;color:#12344d;font-size:22px;\">Email Header Analyzer Results</h2>" +
+        exportSectionHtml("Key Header Values", detailTable) +
+        exportSectionHtml("Potential Findings", findingsList) +
+        exportSectionHtml("Authentication & Routing", routingHtml) +
         "</div>";
     }
 
