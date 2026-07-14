@@ -1612,6 +1612,9 @@ If Python is not installed on this machine:
       const parsed = parseHeaders(raw);
       renderSummary(parsed);
       ui.resultsShell.classList.remove("is-hidden");
+      requestAnimationFrame(function () {
+        ui.resultsShell.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
     }
 
     function clearAll() {
