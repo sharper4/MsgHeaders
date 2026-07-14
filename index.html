@@ -334,6 +334,14 @@ If Python is not installed on this machine:
       overflow-wrap: anywhere;
     }
 
+    #hopTable tr.hop-delay-warn td {
+      background: rgba(163, 95, 0, 0.16);
+    }
+
+    #hopTable tr.hop-delay-bad td {
+      background: rgba(180, 35, 24, 0.18);
+    }
+
     .header-list {
       border: 1px solid var(--line);
       border-radius: 12px;
@@ -970,13 +978,16 @@ If Python is not installed on this machine:
       };
     }
 
+    const HOP_DELAY_WARN_MS = 60 * 1000;
+    const HOP_DELAY_BAD_MS = 5 * 60 * 1000;
+
     function getDomain(addressField) {
       const email = (addressField.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i) || [""])[0];
       const parts = email.split("@");
       return parts.length === 2 ? parts[1].toLowerCase() : "";
     }
 
-    function evaluateFindings(auth, envelope, hops) {
+    function evaluateFindings(auth, envelope, hops, policySignals) {
       const notes = [];
 
       if ([auth.spf, auth.dkim, auth.dmarc].includes("fail")) {
@@ -999,6 +1010,38 @@ If Python is not installed on this machine:
 
       if (!hops.length) {
         notes.push("No Received headers were found. Source routing cannot be validated.");
+      }
+
+      const forefront = policySignals && policySignals.forefront ? policySignals.forefront : {};
+      const scl = parseInt(forefront.scl, 10);
+      const bcl = parseInt(forefront.bcl, 10);
+      const sfv = (forefront.sfv || "").toUpperCase();
+      const cat = (forefront.cat || "").toUpperCase();
+
+      if (!Number.isNaN(scl) && scl >= 5) {
+        notes.push("Spam signal detected: SCL " + scl + " indicates the message was scored as spam or high-confidence spam.");
+      }
+
+      if (!Number.isNaN(bcl) && bcl >= 4) {
+        notes.push("Bulk signal detected: BCL " + bcl + " indicates bulk/gray-mail characteristics.");
+      }
+
+      if (["SPM", "SKS", "SKB"].includes(sfv)) {
+        notes.push("Spam verdict detected in SFV: " + sfv + ".");
+      }
+
+      if (["HSPM", "SPM", "BULK", "HPHSH", "HPHISH", "PHSH", "MALW"].includes(cat)) {
+        notes.push("Threat category detected in CAT: " + cat + ".");
+      }
+
+      const slowHops = hops.filter(function (hop) {
+        return typeof hop.delayMs === "number" && hop.delayMs >= HOP_DELAY_WARN_MS;
+      });
+      if (slowHops.length) {
+        const slowest = slowHops.reduce(function (maxHop, currentHop) {
+          return currentHop.delayMs > maxHop.delayMs ? currentHop : maxHop;
+        }, slowHops[0]);
+        notes.push("Routing delay observed: Hop " + slowest.hop + " took " + formatDuration(slowest.delayMs) + ".");
       }
 
       if (!notes.length) {
@@ -1100,8 +1143,11 @@ If Python is not installed on this machine:
       if (v === "NONE") {
         return "ok";
       }
-      if (v === "PHISH" || v === "MALW" || v === "SPAM") {
+      if (["HPHSH", "HPHISH", "PHSH", "PHISH", "MALW", "SPAM", "HSPM", "SPM", "INTOS", "OSPM"].includes(v)) {
         return "bad";
+      }
+      if (["BULK", "BIMP", "DIMP", "GIMP", "SPOOF", "AMP", "FTBP"].includes(v)) {
+        return "warn";
       }
       return "warn";
     }
@@ -1114,14 +1160,17 @@ If Python is not installed on this machine:
       if (v === "NSPM") {
         return "ok";
       }
-      if (v === "SPM") {
+      if (["SPM", "SKS", "SKB"].includes(v)) {
         return "bad";
       }
       if (v === "BLK") {
         return "bad";
       }
-      if (v === "SKS" || v === "SKN") {
+      if (["SFE", "SKN"].includes(v)) {
         return "ok";
+      }
+      if (["SKA", "SKQ"].includes(v)) {
+        return "warn";
       }
       return "warn";
     }
@@ -1129,7 +1178,26 @@ If Python is not installed on this machine:
     function sfvHelpText(current) {
       const value = (current || "").toUpperCase();
       const currentText = value ? ("Current: " + value + ". ") : "";
-      return currentText + "SFV options commonly seen in Microsoft headers: NSPM = not spam, SPM = spam, SKS = skipped (safe sender), SKN = skipped (trusted/internal), BLK = blocked, SFE = spam filtering evaluated/enforced (meaning can vary by tenant flow).";
+      return currentText + "SFV options: NSPM = non-spam, SPM = marked spam, SFE = skipped and allowed due to Safe Senders, SKA = allowed due to tenant allow list/policy, SKB = blocked due to tenant block list/policy, SKN = non-spam set before filtering (often SCL -1 bypass), SKQ = released from quarantine, SKS = spam set before filtering (often via rule), BLK = skipped and blocked due to user Blocked Senders.";
+    }
+
+    function catHelpText(current) {
+      const value = (current || "").toUpperCase();
+      const currentText = value ? ("Current: " + value + ". ") : "";
+      return currentText + "CAT options: NONE = no category, HSPM = high-confidence spam, SPM = spam, BULK = bulk/gray mail, HPHSH/HPHISH = high-confidence phishing, PHSH = phishing, MALW = malware, BIMP = brand impersonation, DIMP = domain impersonation, GIMP = mailbox intelligence impersonation, INTOS = intra-org phishing, OSPM = outbound spam, AMP/FTBP = malware policy triggers.";
+    }
+
+    function hopDelayTone(delayMs) {
+      if (typeof delayMs !== "number") {
+        return "";
+      }
+      if (delayMs >= HOP_DELAY_BAD_MS) {
+        return "bad";
+      }
+      if (delayMs >= HOP_DELAY_WARN_MS) {
+        return "warn";
+      }
+      return "";
     }
 
     function classifyHostLabel(text) {
@@ -1454,7 +1522,7 @@ If Python is not installed on this machine:
         msCount += 1;
         renderActionPill(ui.microsoftPills, "SCL: " + ms.scl, classifyScl(ms.scl), {
           type: "jumpHeader",
-          hint: "SCL scale: -1 bypass spam filtering; 0 not spam; 1 very low confidence; 5-6 spam; 7-9 high confidence spam. Click to jump to related header.",
+          hint: "SCL scale (Microsoft): -1 bypass/skip spam filtering; 0-1 non-spam; 5-6 spam; 7-9 high-confidence spam (2-4 are generally not stamped by spam filtering). Click to jump to related header.",
           headerKeys: ["x-ms-exchange-organization-scl", "x-forefront-antispam-report"],
           fallbackId: "spamSection"
         });
@@ -1463,7 +1531,7 @@ If Python is not installed on this machine:
         msCount += 1;
         renderActionPill(ui.microsoftPills, "BCL: " + ms.bcl, classifyBcl(ms.bcl), {
           type: "jumpHeader",
-          hint: "BCL scale: 0-3 not bulk; 4-6 marketing/newsletter; 7-9 very bulk-like. Click to jump to related header.",
+          hint: "BCL scale (Microsoft): 0 = not bulk, 1-3 = low-complaint bulk sender, 4-7 = mixed-complaint bulk sender, 8-9 = high-complaint bulk sender. Click to jump to related header.",
           headerKeys: ["x-ms-exchange-organization-bcl", "x-microsoft-antispam-bcl", "x-forefront-antispam-report"],
           fallbackId: "spamSection"
         });
@@ -1490,7 +1558,7 @@ If Python is not installed on this machine:
         msCount += 1;
         renderActionPill(ui.microsoftPills, "CAT: " + ms.cat, classifyCat(ms.cat), {
           type: "jumpHeader",
-          hint: "CAT categories: NONE clean, PHISH phishing, MALW malware, SPAM spam. Click to jump to related header.",
+          hint: catHelpText(ms.cat),
           headerKeys: ["x-ms-exchange-organization-antispam-report", "x-forefront-antispam-report"],
           fallbackId: "spamSection"
         });
@@ -1553,6 +1621,13 @@ If Python is not installed on this machine:
 
       for (const hop of parsed.hops) {
         const tr = document.createElement("tr");
+        const delayTone = hopDelayTone(hop.delayMs);
+        if (delayTone) {
+          tr.classList.add("hop-delay-" + delayTone);
+          tr.title = delayTone === "bad"
+            ? "Slow hop: 5+ minutes between this and previous hop."
+            : "Noticeable hop delay: 1+ minute between this and previous hop.";
+        }
         tr.innerHTML = [
           "<td>" + hop.hop + "</td>",
           "<td>" + escapeHtml(routeStepForHop(hop)) + "</td>",
@@ -1591,12 +1666,12 @@ If Python is not installed on this machine:
       const auth = parseAuthResults(headers);
       const hops = parseReceivedHops(headers);
       const envelope = extractEnvelopeData(headers);
-      const findings = evaluateFindings(auth, envelope, hops);
       const groupedHeaders = splitHeaders(headers);
       const totalTransitMs = hops.length > 1 && typeof hops[0].timestampMs === "number" && typeof hops[hops.length - 1].timestampMs === "number"
         ? (hops[hops.length - 1].timestampMs - hops[0].timestampMs)
         : null;
       const policySignals = extractPolicySignals(headers);
+      const findings = evaluateFindings(auth, envelope, hops, policySignals);
       const partial = { headers, auth, hops, envelope, findings, groupedHeaders, totalTransitMs, policySignals };
       const narrativeSummary = buildNarrativeSummary(partial);
       return { headers, auth, hops, envelope, findings, groupedHeaders, totalTransitMs, policySignals, narrativeSummary };
