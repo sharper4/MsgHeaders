@@ -43,6 +43,14 @@ If Python is not installed on this machine:
         cursor: pointer;
         flex-shrink: 0;
       }
+
+      .copy-icon-btn.wide {
+        width: auto;
+        min-width: 24px;
+        padding: 0 8px;
+        font-size: 0.76rem;
+        font-weight: 700;
+      }
       --muted: #9bb5ca;
       --line: #24425a;
       --brand: #1a5f96;
@@ -501,6 +509,25 @@ If Python is not installed on this machine:
       cursor: pointer;
     }
 
+    .floating-action {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      z-index: 20;
+      border: 1px solid #355a7b;
+      background: rgba(23, 58, 85, 0.94);
+      color: #d2e7fb;
+      border-radius: 999px;
+      padding: 10px 14px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      box-shadow: 0 10px 24px rgba(3, 10, 18, 0.35);
+    }
+
+    .floating-action.is-hidden {
+      display: none;
+    }
+
     @keyframes rise {
       from {
         opacity: 0;
@@ -549,7 +576,7 @@ If Python is not installed on this machine:
 
     <section id="resultsShell" class="shell is-hidden" aria-live="polite">
       <article class="card">
-        <h2 class="heading-line">Summary</h2>
+        <h2 class="heading-line with-action"><span>Summary</span><button id="copyResultsBtn" class="section-toggle" type="button">Copy Results</button></h2>
 
         <h3 class="heading-line">Key Header Values</h3>
         <dl id="headerDetails" class="kv-grid"></dl>
@@ -616,6 +643,7 @@ If Python is not installed on this machine:
       </article>
 
     </section>
+    <button id="scrollTopBtn" class="floating-action is-hidden" type="button">Go To Top</button>
   </main>
 
   <script>
@@ -624,6 +652,8 @@ If Python is not installed on this machine:
       analyzeBtn: document.getElementById("analyzeBtn"),
       clearBtn: document.getElementById("clearBtn"),
       sampleBtn: document.getElementById("sampleBtn"),
+      copyResultsBtn: document.getElementById("copyResultsBtn"),
+      scrollTopBtn: document.getElementById("scrollTopBtn"),
       resultsShell: document.getElementById("resultsShell"),
       routingPills: document.getElementById("routingPills"),
       authPills: document.getElementById("authPills"),
@@ -645,6 +675,8 @@ If Python is not installed on this machine:
 
     ui.ironPortSectionBlock.style.display = "none";
     ui.microsoftSectionBlock.style.display = "none";
+
+  let currentParsed = null;
 
     const SAMPLE_HEADERS = [
       "Received: from mail-io1-f42.google.com (mail-io1-f42.google.com [209.85.166.42]) by NAM11-CO1-obe.outbound.protection.outlook.com (10.152.32.179) with Microsoft SMTP Server (version=TLS1_2, cipher=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384) id 15.20.8517.24 via Frontend Transport; Tue, 14 Jul 2026 10:18:20 +0000",
@@ -1369,6 +1401,30 @@ If Python is not installed on this machine:
       }
     }
 
+    async function copyClipboardPayload(plainText, htmlText) {
+      try {
+        if (htmlText && window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+          const item = new ClipboardItem({
+            "text/plain": new Blob([plainText || ""], { type: "text/plain" }),
+            "text/html": new Blob([htmlText], { type: "text/html" })
+          });
+          await navigator.clipboard.write([item]);
+          return true;
+        }
+      } catch (error) {
+      }
+      return copyToClipboard(plainText);
+    }
+
+    function setButtonFeedback(button, successText, fallbackText) {
+      const original = button.dataset.originalText || button.textContent;
+      button.dataset.originalText = original;
+      button.textContent = successText || fallbackText;
+      setTimeout(function () {
+        button.textContent = original;
+      }, 900);
+    }
+
     function renderActionPill(container, text, tone, action) {
       const item = document.createElement("button");
       item.type = "button";
@@ -1387,11 +1443,7 @@ If Python is not installed on this machine:
 
         if (action.type === "copy") {
           const copied = await copyToClipboard(action.value || "");
-          const original = item.textContent;
-          item.textContent = copied ? "Copied" : "Copy failed";
-          setTimeout(function () {
-            item.textContent = original;
-          }, 900);
+          setButtonFeedback(item, copied ? "Copied" : "Copy failed", "Copy failed");
           return;
         }
 
@@ -1425,6 +1477,145 @@ If Python is not installed on this machine:
       const head = Math.floor((maxLen - 3) * 0.56);
       const tail = Math.floor((maxLen - 3) * 0.44);
       return messageId.slice(0, head) + "..." + messageId.slice(-tail);
+    }
+
+    function createCopyIconButton(label, value) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "copy-icon-btn";
+      btn.textContent = "⧉";
+      btn.title = "Copy " + label;
+      btn.addEventListener("click", async function () {
+        const copied = await copyToClipboard(value || "");
+        const original = btn.textContent;
+        btn.textContent = copied ? "✓" : "!";
+        setTimeout(function () {
+          btn.textContent = original;
+        }, 850);
+      });
+      return btn;
+    }
+
+    function formatPlainResultsReport(parsed) {
+      const lines = [];
+      lines.push("Email Header Analyzer Results");
+      lines.push("");
+      lines.push("Key Header Values");
+      const detailRows = [
+        ["From", parsed.envelope.from],
+        ["To", parsed.envelope.to],
+        ["Subject", parsed.envelope.subject],
+        ["Date", parsed.envelope.date],
+        ["Message-ID", parsed.envelope.messageId],
+        ["Return-Path", parsed.envelope.returnPath],
+        ["Reply-To", parsed.envelope.replyTo],
+        ["X-Originating-IP", parsed.envelope.xOriginatingIp]
+      ];
+      for (const [label, value] of detailRows) {
+        lines.push(label + ": " + (value || "n/a"));
+      }
+      lines.push("");
+      lines.push("Potential Findings");
+      for (const finding of parsed.findings) {
+        lines.push("- " + finding);
+      }
+      lines.push("");
+      lines.push("Authentication & Routing");
+      lines.push("Hops: " + parsed.hops.length);
+      lines.push("End-to-End: " + formatDuration(parsed.totalTransitMs));
+      lines.push("SPF: " + parsed.auth.spf);
+      lines.push("DKIM: " + parsed.auth.dkim);
+      lines.push("DMARC: " + parsed.auth.dmarc);
+      lines.push("CompAuth: " + parsed.auth.compauth + (parsed.auth.compauthReason ? " (Reason " + parsed.auth.compauthReason + ")" : ""));
+      const ms = parsed.policySignals.forefront;
+      if (ms.scl) {
+        lines.push("SCL: " + ms.scl);
+      }
+      if (ms.bcl) {
+        lines.push("BCL: " + ms.bcl);
+      }
+      if (ms.pcl) {
+        lines.push("PCL: " + ms.pcl);
+      }
+      if (ms.sfv) {
+        lines.push("SFV: " + ms.sfv);
+      }
+      if (ms.cat) {
+        lines.push("CAT: " + ms.cat);
+      }
+      if (parsed.policySignals.ironPortPolicy) {
+        lines.push("MailFlowPolicy: " + parsed.policySignals.ironPortPolicy);
+      }
+      if (parsed.policySignals.threatScannerVerdict) {
+        lines.push("ThreatScannerVerdict: " + parsed.policySignals.threatScannerVerdict);
+      }
+      lines.push("Route: " + buildRouteStory(parsed.hops).join(" -> "));
+      return lines.join("\n");
+    }
+
+    function formatHtmlResultsReport(parsed) {
+      const detailRows = [
+        ["From", parsed.envelope.from],
+        ["To", parsed.envelope.to],
+        ["Subject", parsed.envelope.subject],
+        ["Date", parsed.envelope.date],
+        ["Message-ID", parsed.envelope.messageId],
+        ["Return-Path", parsed.envelope.returnPath],
+        ["Reply-To", parsed.envelope.replyTo],
+        ["X-Originating-IP", parsed.envelope.xOriginatingIp]
+      ];
+      const ms = parsed.policySignals.forefront;
+      const signalLines = [
+        ["Hops", String(parsed.hops.length)],
+        ["End-to-End", formatDuration(parsed.totalTransitMs)],
+        ["SPF", parsed.auth.spf],
+        ["DKIM", parsed.auth.dkim],
+        ["DMARC", parsed.auth.dmarc],
+        ["CompAuth", parsed.auth.compauth + (parsed.auth.compauthReason ? " (Reason " + parsed.auth.compauthReason + ")" : "")],
+        ["SCL", ms.scl],
+        ["BCL", ms.bcl],
+        ["PCL", ms.pcl],
+        ["SFV", ms.sfv],
+        ["CAT", ms.cat],
+        ["MailFlowPolicy", parsed.policySignals.ironPortPolicy],
+        ["ThreatScannerVerdict", parsed.policySignals.threatScannerVerdict],
+        ["Route", buildRouteStory(parsed.hops).join(" -> ")]
+      ].filter(function (entry) {
+        return entry[1];
+      });
+
+      return "<div style=\"font-family:Segoe UI,Aptos,Tahoma,sans-serif;color:#102a43;line-height:1.45;\">" +
+        "<h2 style=\"margin:0 0 12px;\">Email Header Analyzer Results</h2>" +
+        "<h3 style=\"margin:16px 0 8px;\">Key Header Values</h3>" +
+        "<table style=\"border-collapse:collapse;width:100%;max-width:900px;\">" +
+        detailRows.map(function (row) {
+          return "<tr><td style=\"padding:4px 10px 4px 0;font-weight:700;vertical-align:top;white-space:nowrap;\">" + escapeHtml(row[0]) + "</td><td style=\"padding:4px 0;\">" + escapeHtml(row[1] || "n/a") + "</td></tr>";
+        }).join("") +
+        "</table>" +
+        "<h3 style=\"margin:16px 0 8px;\">Potential Findings</h3>" +
+        "<ul style=\"margin:0 0 0 18px;padding:0;\">" +
+        parsed.findings.map(function (finding) {
+          return "<li style=\"margin:0 0 6px;\">" + escapeHtml(finding) + "</li>";
+        }).join("") +
+        "</ul>" +
+        "<h3 style=\"margin:16px 0 8px;\">Authentication & Routing</h3>" +
+        "<table style=\"border-collapse:collapse;width:100%;max-width:900px;\">" +
+        signalLines.map(function (row) {
+          return "<tr><td style=\"padding:4px 10px 4px 0;font-weight:700;vertical-align:top;white-space:nowrap;\">" + escapeHtml(row[0]) + "</td><td style=\"padding:4px 0;\">" + escapeHtml(row[1]) + "</td></tr>";
+        }).join("") +
+        "</table>" +
+        "</div>";
+    }
+
+    async function copyResultsReport() {
+      if (!currentParsed) {
+        setButtonFeedback(ui.copyResultsBtn, "No Results", "No Results");
+        return;
+      }
+      const plainText = formatPlainResultsReport(currentParsed);
+      const htmlText = formatHtmlResultsReport(currentParsed);
+      const copied = await copyClipboardPayload(plainText, htmlText);
+      setButtonFeedback(ui.copyResultsBtn, copied ? "Copied" : "Copy failed", "Copy failed");
     }
 
     function resetHeaderListExpansion() {
@@ -1682,32 +1873,14 @@ If Python is not installed on this machine:
         const dd = document.createElement("dd");
         dt.textContent = label;
 
-        if (label === "Message-ID") {
-          const wrap = document.createElement("span");
-          wrap.className = "value-with-copy";
+        const wrap = document.createElement("span");
+        wrap.className = "value-with-copy";
 
-          const valueSpan = document.createElement("span");
-          valueSpan.textContent = value || "n/a";
-          wrap.appendChild(valueSpan);
-
-          const btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = "copy-icon-btn";
-          btn.textContent = "⧉";
-          btn.title = "Copy Message-ID";
-          btn.addEventListener("click", async function () {
-            const copied = await copyToClipboard(value || "");
-            const original = btn.textContent;
-            btn.textContent = copied ? "✓" : "!";
-            setTimeout(function () {
-              btn.textContent = original;
-            }, 850);
-          });
-          wrap.appendChild(btn);
-          dd.appendChild(wrap);
-        } else {
-          dd.textContent = value || "n/a";
-        }
+        const valueSpan = document.createElement("span");
+        valueSpan.textContent = value || "n/a";
+        wrap.appendChild(valueSpan);
+        wrap.appendChild(createCopyIconButton(label, value || ""));
+        dd.appendChild(wrap);
 
         ui.details.appendChild(dt);
         ui.details.appendChild(dd);
@@ -1779,14 +1952,17 @@ If Python is not installed on this machine:
       }
 
       const parsed = parseHeaders(raw);
+      currentParsed = parsed;
       renderSummary(parsed);
       ui.resultsShell.classList.remove("is-hidden");
+      ui.scrollTopBtn.classList.remove("is-hidden");
       requestAnimationFrame(function () {
         ui.resultsShell.scrollIntoView({ behavior: "smooth", block: "start" });
       });
     }
 
     function clearAll() {
+      currentParsed = null;
       ui.input.value = "";
       ui.routingPills.innerHTML = "";
       ui.authPills.innerHTML = "";
@@ -1803,6 +1979,7 @@ If Python is not installed on this machine:
       resetHeaderListExpansion();
       resetHopChainExpansion();
       ui.resultsShell.classList.add("is-hidden");
+      ui.scrollTopBtn.classList.add("is-hidden");
       ui.input.focus();
     }
 
@@ -1811,6 +1988,10 @@ If Python is not installed on this machine:
     ui.sampleBtn.addEventListener("click", function () {
       ui.input.value = SAMPLE_HEADERS;
       analyze();
+    });
+    ui.copyResultsBtn.addEventListener("click", copyResultsReport);
+    ui.scrollTopBtn.addEventListener("click", function () {
+      document.querySelector(".hero").scrollIntoView({ behavior: "smooth", block: "start" });
     });
     ui.toggleSpamHeaders.addEventListener("click", function () {
       toggleHeaderList(ui.spamHeaders, ui.toggleSpamHeaders);
