@@ -690,6 +690,8 @@ If Python is not installed on this machine:
     ui.microsoftSectionBlock.style.display = "none";
 
     let currentParsed = null;
+    const COLLAPSED_HOP_ROWS = 10;
+    const EXPANDED_HOP_MAX_HEIGHT_PX = 760;
 
     const SAMPLE_HEADERS = [
       "Received: from mail-io1-f42.google.com (mail-io1-f42.google.com [209.85.166.42]) by NAM11-CO1-obe.outbound.protection.outlook.com (10.152.32.179) with Microsoft SMTP Server (version=TLS1_2, cipher=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384) id 15.20.8517.24 via Frontend Transport; Tue, 14 Jul 2026 10:18:20 +0000",
@@ -1843,11 +1845,49 @@ If Python is not installed on this machine:
     function resetHopChainExpansion() {
       ui.hopTableWrap.classList.remove("expanded");
       ui.toggleHopChain.textContent = "Show More";
+      ui.toggleHopChain.style.display = "";
+      ui.hopTableWrap.style.maxHeight = "";
+    }
+
+    function updateHopChainViewport() {
+      const rows = ui.hopTable.querySelectorAll("tr");
+      const rowCount = rows.length;
+
+      if (!rowCount) {
+        ui.toggleHopChain.style.display = "none";
+        ui.hopTableWrap.style.maxHeight = "";
+        return;
+      }
+
+      const hasOverflow = rowCount > COLLAPSED_HOP_ROWS;
+      ui.toggleHopChain.style.display = hasOverflow ? "" : "none";
+
+      if (ui.hopTableWrap.classList.contains("expanded")) {
+        ui.hopTableWrap.style.maxHeight = EXPANDED_HOP_MAX_HEIGHT_PX + "px";
+        return;
+      }
+
+      if (!hasOverflow) {
+        ui.hopTableWrap.style.maxHeight = "";
+        return;
+      }
+
+      const table = ui.hopTable.closest("table");
+      const headerHeight = table && table.tHead ? table.tHead.getBoundingClientRect().height : 0;
+      const visibleRowCount = Math.min(COLLAPSED_HOP_ROWS, rowCount);
+      let rowsHeight = 0;
+
+      for (let i = 0; i < visibleRowCount; i += 1) {
+        rowsHeight += rows[i].getBoundingClientRect().height;
+      }
+
+      ui.hopTableWrap.style.maxHeight = Math.ceil(headerHeight + rowsHeight + 2) + "px";
     }
 
     function toggleHopChain() {
       const isExpanded = ui.hopTableWrap.classList.toggle("expanded");
       ui.toggleHopChain.textContent = isExpanded ? "Show Less" : "Show More";
+      updateHopChainViewport();
     }
 
     let rowHighlightTimer = null;
@@ -2157,6 +2197,8 @@ If Python is not installed on this machine:
         ui.hopTable.appendChild(tr);
       }
 
+      updateHopChainViewport();
+
       for (const finding of parsed.findings) {
         const li = document.createElement("li");
         li.textContent = finding;
@@ -2250,6 +2292,7 @@ If Python is not installed on this machine:
       toggleHeaderList(ui.otherHeaders, ui.toggleOtherHeaders);
     });
     ui.toggleHopChain.addEventListener("click", toggleHopChain);
+    window.addEventListener("resize", updateHopChainViewport);
   </script>
 </body>
 </html>
