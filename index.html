@@ -181,6 +181,10 @@ If Python is not installed on this machine:
       align-items: start;
     }
 
+    .shell.is-hidden {
+      display: none;
+    }
+
     .card {
       background: var(--bg-elev);
       border: 1px solid var(--line);
@@ -535,7 +539,7 @@ If Python is not installed on this machine:
       </div>
     </section>
 
-    <section class="shell" aria-live="polite">
+    <section id="resultsShell" class="shell is-hidden" aria-live="polite">
       <article class="card">
         <h2 class="heading-line">Summary</h2>
 
@@ -612,6 +616,7 @@ If Python is not installed on this machine:
       analyzeBtn: document.getElementById("analyzeBtn"),
       clearBtn: document.getElementById("clearBtn"),
       sampleBtn: document.getElementById("sampleBtn"),
+      resultsShell: document.getElementById("resultsShell"),
       routingPills: document.getElementById("routingPills"),
       authPills: document.getElementById("authPills"),
       ironPortPills: document.getElementById("ironPortPills"),
@@ -1606,6 +1611,7 @@ If Python is not installed on this machine:
 
       const parsed = parseHeaders(raw);
       renderSummary(parsed);
+      ui.resultsShell.classList.remove("is-hidden");
     }
 
     function clearAll() {
@@ -1624,6 +1630,7 @@ If Python is not installed on this machine:
       ui.microsoftSectionBlock.style.display = "none";
       resetHeaderListExpansion();
       resetHopChainExpansion();
+      ui.resultsShell.classList.add("is-hidden");
       ui.input.focus();
     }
 
