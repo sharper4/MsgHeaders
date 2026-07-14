@@ -1760,7 +1760,7 @@ If Python is not installed on this machine:
         parsed.policySignals.ironPortPolicy ? exportPillHtml("MailFlowPolicy: " + parsed.policySignals.ironPortPolicy, classifyIronPortPolicy(parsed.policySignals.ironPortPolicy)) : "",
         parsed.policySignals.threatScannerVerdict ? exportPillHtml("ThreatScannerVerdict: " + parsed.policySignals.threatScannerVerdict, classifyThreatScannerVerdict(parsed.policySignals.threatScannerVerdict)) : "",
         exportPillHtml("GrayMail: " + (parsed.policySignals.grayMailDetected ? "Detected" : "Not Detected"), parsed.policySignals.grayMailDetected ? "warn" : "ok"),
-        exportPillHtml("ProxyWrapped URL: " + (parsed.policySignals.proxyWrappedUrlFound ? "Found" : "Not Found"), parsed.policySignals.proxyWrappedUrlFound ? "warn" : "ok")
+        parsed.policySignals.proxyWrappedUrlFound ? exportPillHtml("ProxyWrapped URL: Found", "warn") : ""
       ].join("");
 
       const detailTable = "<table style=\"border-collapse:collapse;width:100%;max-width:900px;\">" +
@@ -1975,7 +1975,6 @@ If Python is not installed on this machine:
 
       const iron = parsed.policySignals;
       let ironCount = 0;
-      const hasIronContext = Boolean(iron.hasIronPortContext || iron.ironPortPolicy || iron.threatScannerVerdict || iron.grayMailDetected || iron.proxyWrappedUrlFound);
       if (iron.ironPortPolicy) {
         ironCount += 1;
         renderActionPill(
@@ -2018,12 +2017,12 @@ If Python is not installed on this machine:
           }
         );
       }
-      if (hasIronContext) {
+      if (iron.proxyWrappedUrlFound) {
         ironCount += 1;
         renderActionPill(
           ui.ironPortPills,
-          "ProxyWrapped URL: " + (iron.proxyWrappedUrlFound ? "Found" : "Not Found"),
-          iron.proxyWrappedUrlFound ? "warn" : "ok",
+          "ProxyWrapped URL: Found",
+          "warn",
           {
             type: "jumpHeader",
             hint: "ProxyWrapped URL indicates URL rewriting/protection was applied (common in secure email gateways and click-protection workflows).",
