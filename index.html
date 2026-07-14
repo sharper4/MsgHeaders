@@ -1989,19 +1989,21 @@ If Python is not installed on this machine:
         const dd = document.createElement("dd");
         dt.textContent = label;
 
-        const wrap = document.createElement("span");
-        wrap.className = "value-with-copy";
+        if (label === "Message-ID") {
+          const wrap = document.createElement("span");
+          wrap.className = "value-with-copy";
 
-        const valueSpan = document.createElement("span");
-        if (label === "Date") {
-          const recap = formatLocalDateRecap(value);
-          valueSpan.textContent = value ? (recap ? value + " (" + recap + ")" : value) : "n/a";
-        } else {
+          const valueSpan = document.createElement("span");
           valueSpan.textContent = value || "n/a";
+          wrap.appendChild(valueSpan);
+          wrap.appendChild(createCopyIconButton(label, value || ""));
+          dd.appendChild(wrap);
+        } else if (label === "Date") {
+          const recap = formatLocalDateRecap(value);
+          dd.textContent = value ? (recap ? value + " (" + recap + ")" : value) : "n/a";
+        } else {
+          dd.textContent = value || "n/a";
         }
-        wrap.appendChild(valueSpan);
-        wrap.appendChild(createCopyIconButton(label, value || ""));
-        dd.appendChild(wrap);
 
         ui.details.appendChild(dt);
         ui.details.appendChild(dd);
