@@ -487,6 +487,29 @@ If Python is not installed on this machine:
       color: #d7eaff;
     }
 
+    .scope-tag {
+      display: inline-block;
+      margin-left: 6px;
+      padding: 1px 6px;
+      border-radius: 999px;
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+      vertical-align: middle;
+    }
+
+    .scope-tag.int {
+      color: #0f5132;
+      background: #dff6ea;
+      border: 1px solid #b5e3ca;
+    }
+
+    .scope-tag.ext {
+      color: #5f4a00;
+      background: #fff3dc;
+      border: 1px solid #ffde9c;
+    }
+
     .hint {
       color: #b4d0e6;
       font-size: 0.83rem;
@@ -1424,6 +1447,33 @@ If Python is not installed on this machine:
       return token || "Mail Transfer Agent";
     }
 
+    function isInternalEndpoint(text) {
+      const source = (text || "").toLowerCase();
+      if (!source) {
+        return false;
+      }
+      return [
+        "iphmx.com",
+        "ironport",
+        "protection.outlook.com",
+        "outlook.office365.com",
+        "deloitte",
+        "exchange"
+      ].some(function (token) {
+        return source.includes(token);
+      });
+    }
+
+    function endpointScopeBadge(text) {
+      const internal = isInternalEndpoint(text);
+      const label = internal ? "INT" : "EXT";
+      const tone = internal ? "int" : "ext";
+      const title = internal
+        ? "Internal/trusted infrastructure hop"
+        : "External/untrusted sender-side hop";
+      return "<span class=\"scope-tag " + tone + "\" title=\"" + title + "\">" + label + "</span>";
+    }
+
     function buildRouteStory(hops) {
       const nodes = ["Sender Mailbox"];
       for (let i = 0; i < hops.length; i += 1) {
@@ -2067,7 +2117,7 @@ If Python is not installed on this machine:
 
       const routeNodes = buildRouteStory(parsed.hops);
       if (routeNodes.length) {
-        ui.routeInline.innerHTML = "<strong>Route:</strong> " + routeNodes.map(escapeHtml).join(" -> ");
+        ui.routeInline.innerHTML = "<strong>Route:</strong> " + routeNodes.map(escapeHtml).join(" -> ") + "<div class=\"hint\" style=\"margin-top:6px;\">INT = internal gateway hop, EXT = external hop.</div>";
       } else {
         ui.routeInline.textContent = "Route: n/a";
       }
@@ -2110,6 +2160,8 @@ If Python is not installed on this machine:
       for (const hop of parsed.hops) {
         const tr = document.createElement("tr");
         const delayTone = hopDelayTone(hop.delayMs);
+        const fromText = escapeHtml(hop.from || "n/a");
+        const byText = escapeHtml(hop.by || "n/a");
         if (delayTone) {
           tr.classList.add("hop-delay-" + delayTone);
           tr.title = delayTone === "bad"
@@ -2119,8 +2171,8 @@ If Python is not installed on this machine:
         tr.innerHTML = [
           "<td>" + hop.hop + "</td>",
           "<td>" + escapeHtml(routeStepForHop(hop)) + "</td>",
-          "<td>" + escapeHtml(hop.from || "n/a") + "</td>",
-          "<td>" + escapeHtml(hop.by || "n/a") + "</td>",
+          "<td>" + fromText + endpointScopeBadge(hop.from) + "</td>",
+          "<td>" + byText + endpointScopeBadge(hop.by) + "</td>",
           "<td>" + escapeHtml(hop.ip || "n/a") + "</td>",
           "<td>" + escapeHtml(hop.protocol || "n/a") + "</td>",
           "<td>" + escapeHtml(hop.date || "n/a") + "</td>",
