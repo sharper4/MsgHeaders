@@ -1399,6 +1399,9 @@ If Python is not installed on this machine:
       if (source.includes("iphmx.com")) {
         return "IronPort Device";
       }
+      if (source.includes("cisco.com")) {
+        return "Cisco (Vendor)";
+      }
       if (source.includes("service-now.com")) {
         return "Service Now";
       }
@@ -1408,7 +1411,7 @@ If Python is not installed on this machine:
       if (source.includes("proofpoint") || source.includes("pphosted") || source.includes("pps")) {
         return "Proofpoint";
       }
-      if (source.includes("ironport") || source.includes("cisco")) {
+      if (source.includes("ironport")) {
         return "Deloitte IronPort";
       }
       if (source.includes("protection.outlook.com") || source.includes("outlook.com")) {
