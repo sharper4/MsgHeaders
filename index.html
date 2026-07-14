@@ -1377,6 +1377,20 @@ If Python is not installed on this machine:
       return "";
     }
 
+    function mostSevereDelayTone(hops) {
+      let tone = "";
+      for (const hop of hops || []) {
+        const currentTone = hopDelayTone(hop.delayMs);
+        if (currentTone === "bad") {
+          return "bad";
+        }
+        if (currentTone === "warn") {
+          tone = "warn";
+        }
+      }
+      return tone;
+    }
+
     function classifyHostLabel(text) {
       const source = (text || "").toLowerCase();
       if (!source) {
@@ -1885,6 +1899,8 @@ If Python is not installed on this machine:
       resetHeaderListExpansion();
       resetHopChainExpansion();
 
+      const delaySeverityTone = mostSevereDelayTone(parsed.hops);
+
       renderActionPill(
         ui.routingPills,
         "Hops: " + parsed.hops.length,
@@ -1899,10 +1915,12 @@ If Python is not installed on this machine:
       renderActionPill(
         ui.routingPills,
         "End-to-End: " + formatDuration(parsed.totalTransitMs),
-        parsed.totalTransitMs ? "ok" : "warn",
+        delaySeverityTone || (parsed.totalTransitMs ? "ok" : "warn"),
         {
           type: "jumpHeader",
-          hint: "Jump to Received headers in full readout.",
+          hint: delaySeverityTone
+            ? "End-to-end timing color reflects delayed hop highlighting in the Received chain. Click to review delayed hop rows."
+            : "Jump to Received headers in full readout.",
           headerKeys: ["received"],
           fallbackId: "routingSection"
         }
