@@ -1,0 +1,1477 @@
+<!--
+How to run locally:
+1. Open terminal in project folder
+2. Run: python -m http.server 8000
+3. Open browser: http://localhost:8000
+
+If Python is not installed on this machine:
+1. Open PowerShell in project folder
+2. Run: .\serve-local.ps1 -Port 8000
+3. Open browser: http://localhost:8000
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Email Header Analyzer</title>
+  <style>
+    :root {
+      --bg: #071826;
+      --bg-elev: #0f2538;
+      --ink: #e6f2ff;
+      .value-with-copy {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .copy-icon-btn {
+        border: 1px solid #355a7b;
+        background: #173a55;
+        color: #d8ebff;
+        border-radius: 6px;
+        width: 24px;
+        height: 24px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.86rem;
+        padding: 0;
+        line-height: 1;
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+      --muted: #9bb5ca;
+      --line: #24425a;
+      --brand: #1a5f96;
+      --brand-2: #2b7cc0;
+      --ok: #157347;
+      --warn: #a35f00;
+      --bad: #b42318;
+      --shadow: 0 18px 44px rgba(3, 10, 18, 0.45);
+      --radius: 16px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: "Segoe UI", "Aptos", Tahoma, sans-serif;
+      scroll-behavior: smooth;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 10% -10%, #17466d 0%, transparent 40%),
+        radial-gradient(circle at 98% 3%, #0f3657 0%, transparent 35%),
+        var(--bg);
+      min-height: 100%;
+    }
+
+    .page {
+      width: min(1880px, calc(100vw - 24px));
+      margin: 24px auto 28px;
+      padding: 0 14px;
+    }
+
+    .hero {
+      background: linear-gradient(136deg, #0a2336 0%, #123d5e 46%, #215f95 100%);
+      border-radius: 22px;
+      padding: 20px;
+      color: #f8fdff;
+      box-shadow: var(--shadow);
+      display: grid;
+      gap: 14px;
+      animation: rise 380ms ease;
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-size: clamp(1.4rem, 2.3vw, 2rem);
+      letter-spacing: 0.2px;
+    }
+
+    .hero p {
+      margin: 0;
+      max-width: 850px;
+      color: #c7e3fb;
+      font-size: 0.95rem;
+      line-height: 1.45;
+    }
+
+    .input-panel {
+      background: rgba(4, 16, 27, 0.55);
+      border: 1px solid rgba(146, 190, 224, 0.26);
+      border-radius: var(--radius);
+      padding: 14px;
+      backdrop-filter: blur(4px);
+      display: grid;
+      gap: 10px;
+    }
+
+    label {
+      font-weight: 700;
+      font-size: 0.92rem;
+      letter-spacing: 0.1px;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 180px;
+      max-height: 300px;
+      resize: vertical;
+      border-radius: 12px;
+      border: 1px solid #335775;
+      padding: 12px;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.86rem;
+      line-height: 1.35;
+      color: #e7f3ff;
+      background: #0b1f31;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 14px;
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 0.9rem;
+      letter-spacing: 0.15px;
+      transition: transform 120ms ease, opacity 120ms ease, box-shadow 120ms ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      opacity: 0.96;
+      box-shadow: 0 8px 20px rgba(8, 26, 36, 0.2);
+    }
+
+    .btn-main {
+      color: #ffffff;
+      background: linear-gradient(90deg, #1a5f96, #2b7cc0);
+    }
+
+    .btn-secondary {
+      color: #d9eeff;
+      background: #1a3f5f;
+    }
+
+    .btn-muted {
+      color: #c5e0f5;
+      background: #17344c;
+    }
+
+    .shell {
+      margin-top: 16px;
+      display: grid;
+      gap: 12px;
+      grid-template-columns: 1fr;
+      align-items: start;
+    }
+
+    .card {
+      background: var(--bg-elev);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 14px;
+      animation: rise 380ms ease;
+      margin-bottom: 2px;
+    }
+
+    .card h2,
+    .card h3 {
+      margin: 0 0 10px;
+      font-size: 1rem;
+      color: #d7ebff;
+    }
+
+    .heading-line {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .heading-line.with-action {
+      justify-content: space-between;
+    }
+
+    .status-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .pill {
+      border-radius: 14px;
+      padding: 8px 12px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      border: 1px solid transparent;
+      box-shadow: 0 8px 18px rgba(2, 10, 19, 0.22);
+      min-height: 44px;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1.25;
+      overflow: hidden;
+    }
+
+    .pill-message {
+      justify-content: flex-start;
+      text-align: left;
+      white-space: normal;
+      word-break: break-all;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.76rem;
+    }
+
+    .pill.interactive {
+      cursor: pointer;
+      transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
+    }
+
+    .pill.interactive:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 24px rgba(2, 10, 19, 0.3);
+      border-color: #5f8db2;
+    }
+
+    .pill.ok {
+      color: #0f5132;
+      background: #dff6ea;
+      border-color: #b5e3ca;
+    }
+
+    .pill.warn {
+      color: #6a4104;
+      background: #fff3dc;
+      border-color: #ffde9c;
+    }
+
+    .pill.bad {
+      color: #7f1d1d;
+      background: #fee4e2;
+      border-color: #f7b5b1;
+    }
+
+    .pill.phish {
+      color: #7a3412;
+      background: #ffedd5;
+      border-color: #fdba74;
+    }
+
+    .pill.muted {
+      color: #b8d6ec;
+      background: #14334c;
+      border-color: #285173;
+    }
+
+    .kv-grid {
+      display: grid;
+      grid-template-columns: 140px 1fr;
+      gap: 8px 10px;
+      font-size: 0.88rem;
+      max-height: 220px;
+      overflow: auto;
+      padding-right: 6px;
+    }
+
+    .kv-grid dt {
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .kv-grid dd {
+      margin: 0;
+      word-break: break-word;
+    }
+
+    .table-wrap {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: auto;
+      max-height: 390px;
+    }
+
+    .table-wrap.expanded {
+      max-height: 760px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      font-size: 0.82rem;
+    }
+
+    th,
+    td {
+      text-align: left;
+      border-bottom: 1px solid #22405b;
+      padding: 8px;
+      vertical-align: top;
+      white-space: normal;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+    }
+
+    .header-list {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(5, 20, 34, 0.48);
+      overflow: auto;
+      max-height: 225px;
+    }
+
+    .header-list.expanded {
+      max-height: 540px;
+    }
+
+    .header-row {
+      display: grid;
+      grid-template-columns: 210px minmax(0, 1fr);
+      gap: 10px;
+      padding: 8px 10px;
+      border-bottom: 1px solid #22405b;
+      font-size: 0.84rem;
+      line-height: 1.35;
+    }
+
+    .header-row:last-child {
+      border-bottom: 0;
+    }
+
+    .header-key {
+      color: #9fc5e3;
+      font-weight: 700;
+      text-transform: lowercase;
+    }
+
+    .header-value {
+      color: #d7eaff;
+      word-break: break-word;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      background: #16334c;
+      color: #d2e8fb;
+      z-index: 1;
+      font-size: 0.78rem;
+      letter-spacing: 0.18px;
+      text-transform: uppercase;
+    }
+
+    .hop-col-hop {
+      width: 52px;
+    }
+
+    .hop-col-from,
+    .hop-col-by {
+      width: 23%;
+    }
+
+    .hop-col-ip {
+      width: 120px;
+    }
+
+    .hop-col-protocol {
+      width: 220px;
+    }
+
+    .hop-col-date {
+      width: 210px;
+    }
+
+    .hop-col-delay {
+      width: 120px;
+    }
+
+    .flags {
+      margin: 0;
+      padding-left: 20px;
+      font-size: 0.88rem;
+      line-height: 1.4;
+      max-height: 175px;
+      overflow: auto;
+    }
+
+    .flags li {
+      margin-bottom: 6px;
+    }
+
+    .explanation-list {
+      margin: 0 0 12px;
+      padding-left: 20px;
+      font-size: 0.9rem;
+      line-height: 1.45;
+      color: #d7eaff;
+    }
+
+    .explanation-list li {
+      margin-bottom: 8px;
+    }
+
+    .route-inline {
+      margin: 0 0 12px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(7, 27, 43, 0.48);
+      max-height: 120px;
+      overflow: auto;
+      font-size: 0.82rem;
+      line-height: 1.35;
+    }
+
+    .route-inline strong {
+      color: #d7eaff;
+    }
+
+    .hint {
+      color: #b4d0e6;
+      font-size: 0.83rem;
+    }
+
+    .section-toolbar {
+      display: flex;
+      justify-content: flex-end;
+      margin: -4px 0 8px;
+    }
+
+    .section-toggle {
+      border: 1px solid #355a7b;
+      background: #173a55;
+      color: #d2e7fb;
+      border-radius: 8px;
+      padding: 5px 10px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    @keyframes rise {
+      from {
+        opacity: 0;
+        transform: translateY(6px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (max-width: 1100px) {
+      textarea {
+        min-height: 150px;
+      }
+
+      .kv-grid {
+        grid-template-columns: 120px 1fr;
+      }
+
+      .header-row {
+        grid-template-columns: 1fr;
+        gap: 4px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero" aria-labelledby="title">
+      <h1 id="title">Email Header Analyzer</h1>
+      <p>
+        Paste raw RFC822 email headers to parse routing hops, authentication outcomes, high-value fields, and plain-language delivery explanations.
+      </p>
+      <div class="input-panel">
+        <label for="headerInput">Raw Email Headers</label>
+        <textarea id="headerInput" spellcheck="false" aria-describedby="inputHint" placeholder="Paste full email headers here..."></textarea>
+        <div id="inputHint" class="hint">No data leaves your browser. Parsing happens fully client-side.</div>
+        <div class="toolbar">
+          <button id="analyzeBtn" class="btn-main" type="button">Analyze Headers</button>
+          <button id="sampleBtn" class="btn-secondary" type="button">Load Sample</button>
+          <button id="clearBtn" class="btn-muted" type="button">Clear</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="shell" aria-live="polite">
+      <article class="card">
+        <h2 class="heading-line">Summary</h2>
+
+        <h3 class="heading-line">Key Header Values</h3>
+        <dl id="headerDetails" class="kv-grid"></dl>
+
+        <h3 class="heading-line">Potential Findings</h3>
+        <ul id="findings" class="flags"></ul>
+      </article>
+
+      <article class="card">
+        <h2 id="routingSection" class="heading-line">Authentication & Routing</h2>
+        <div id="routingPills" class="status-row"></div>
+
+        <h3 class="heading-line">Auth Results</h3>
+        <div id="authPills" class="status-row"></div>
+
+        <section id="ironPortSectionBlock">
+          <h3 class="heading-line">IronPort Signals</h3>
+          <div id="ironPortPills" class="status-row"></div>
+        </section>
+
+        <section id="microsoftSectionBlock">
+          <h3 class="heading-line">Microsoft Threat Signals</h3>
+          <div id="microsoftPills" class="status-row"></div>
+        </section>
+
+        <h3 class="heading-line with-action"><span>Received Hop Chain</span><button id="toggleHopChain" class="section-toggle" type="button">Show More</button></h3>
+        <div id="routeInline" class="route-inline"></div>
+        <div id="hopTableWrap" class="table-wrap">
+          <table aria-label="Received hop details">
+            <colgroup>
+              <col class="hop-col-hop" />
+              <col class="hop-col-protocol" />
+              <col class="hop-col-from" />
+              <col class="hop-col-by" />
+              <col class="hop-col-ip" />
+              <col class="hop-col-date" />
+              <col class="hop-col-delay" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th scope="col" title="Hop number in the order listed by headers">Hop</th>
+                <th scope="col" title="Generic path step derived from this hop">Route Step</th>
+                <th scope="col" title="Server that handed off the message">From</th>
+                <th scope="col" title="Server that received the message">By</th>
+                <th scope="col" title="Observed IPv4 address for this hop">IP</th>
+                <th scope="col" title="Transport protocol reported for this hop">Protocol</th>
+                <th scope="col" title="Timestamp recorded by this receiving server">Date</th>
+                <th scope="col" title="Time elapsed between this hop and the previous hop">Delay</th>
+              </tr>
+            </thead>
+            <tbody id="hopTable"></tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="card">
+        <h3 id="spamSection" class="heading-line with-action"><span>Spam & Security Headers</span><button id="toggleSpamHeaders" class="section-toggle" type="button">Show More</button></h3>
+        <div id="spamHeaders" class="header-list" aria-label="Spam and security related headers"></div>
+      </article>
+
+      <article class="card">
+        <h3 class="heading-line with-action"><span>All Remaining Headers</span><button id="toggleOtherHeaders" class="section-toggle" type="button">Show More</button></h3>
+        <div id="otherHeaders" class="header-list" aria-label="All other parsed headers"></div>
+      </article>
+
+    </section>
+  </main>
+
+  <script>
+    const ui = {
+      input: document.getElementById("headerInput"),
+      analyzeBtn: document.getElementById("analyzeBtn"),
+      clearBtn: document.getElementById("clearBtn"),
+      sampleBtn: document.getElementById("sampleBtn"),
+      routingPills: document.getElementById("routingPills"),
+      authPills: document.getElementById("authPills"),
+      ironPortPills: document.getElementById("ironPortPills"),
+      microsoftPills: document.getElementById("microsoftPills"),
+      details: document.getElementById("headerDetails"),
+      findings: document.getElementById("findings"),
+      hopTable: document.getElementById("hopTable"),
+      hopTableWrap: document.getElementById("hopTableWrap"),
+      toggleHopChain: document.getElementById("toggleHopChain"),
+      routeInline: document.getElementById("routeInline"),
+      ironPortSectionBlock: document.getElementById("ironPortSectionBlock"),
+      microsoftSectionBlock: document.getElementById("microsoftSectionBlock"),
+      spamHeaders: document.getElementById("spamHeaders"),
+      otherHeaders: document.getElementById("otherHeaders"),
+      toggleSpamHeaders: document.getElementById("toggleSpamHeaders"),
+      toggleOtherHeaders: document.getElementById("toggleOtherHeaders")
+    };
+
+    ui.ironPortSectionBlock.style.display = "none";
+    ui.microsoftSectionBlock.style.display = "none";
+
+    const SAMPLE_HEADERS = [
+      "Received: from mail-io1-f42.google.com (mail-io1-f42.google.com [209.85.166.42]) by NAM11-CO1-obe.outbound.protection.outlook.com (10.152.32.179) with Microsoft SMTP Server (version=TLS1_2, cipher=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384) id 15.20.8517.24 via Frontend Transport; Tue, 14 Jul 2026 10:18:20 +0000",
+      "Received: from smtp.gmail.com (smtp.gmail.com [74.125.200.108]) by mail-io1-f42.google.com with ESMTPS id abc123xyz for <recipient@example.com>; Tue, 14 Jul 2026 10:18:19 +0000",
+      "Authentication-Results: spf=pass (sender IP is 209.85.166.42) smtp.mailfrom=example.org; dkim=pass (signature was verified) header.d=example.org; dmarc=pass action=none header.from=example.org; compauth=pass reason=100;",
+      "X-Forefront-Antispam-Report: CIP:209.85.166.42;CAT:NONE;SCL:1;SFV:NSPM;BCL:1;PCL:1;",
+      "From: Example Sender <sender@example.org>",
+      "To: Recipient User <recipient@example.com>",
+      "Subject: Invoice review for July",
+      "Date: Tue, 14 Jul 2026 10:18:18 +0000",
+      "Message-ID: <1234abcd.5678@example.org>",
+      "Return-Path: <bounce@example.org>",
+      "Reply-To: Accounts Team <accounts@example.org>",
+      "X-Originating-IP: [209.85.166.42]"
+    ].join("\n");
+
+    function normalizeHeaderInput(raw) {
+      return raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+    }
+
+    function unfoldHeaderLines(raw) {
+      const lines = normalizeHeaderInput(raw).split("\n");
+      const unfolded = [];
+      let current = "";
+
+      for (const line of lines) {
+        if (!line) {
+          continue;
+        }
+
+        if (/^[\t ]+/.test(line) && current) {
+          current += " " + line.trim();
+        } else {
+          if (current) {
+            unfolded.push(current);
+          }
+          current = line.trim();
+        }
+      }
+
+      if (current) {
+        unfolded.push(current);
+      }
+
+      return unfolded;
+    }
+
+    function parseHeaderMap(raw) {
+      const unfolded = unfoldHeaderLines(raw);
+      const map = {};
+
+      for (const line of unfolded) {
+        const idx = line.indexOf(":");
+        if (idx < 1) {
+          continue;
+        }
+
+        const key = line.slice(0, idx).trim().toLowerCase();
+        const value = line.slice(idx + 1).trim();
+        if (!map[key]) {
+          map[key] = [];
+        }
+        map[key].push(value);
+      }
+
+      return map;
+    }
+
+    function firstHeaderValue(headers, key) {
+      return headers[key] && headers[key].length ? headers[key][0] : "";
+    }
+
+    function parseAuthResults(headers) {
+      const authLines = [
+        ...(headers["authentication-results"] || []),
+        ...(headers["auth-results"] || [])
+      ];
+
+      const result = {
+        spf: "unknown",
+        dkim: "unknown",
+        dmarc: "unknown",
+        compauth: "unknown",
+        compauthReason: ""
+      };
+
+      for (const line of authLines) {
+        const spf = line.match(/spf\s*=\s*([a-z]+)/i);
+        const dkim = line.match(/dkim\s*=\s*([a-z]+)/i);
+        const dmarc = line.match(/dmarc\s*=\s*([a-z]+)/i);
+        const compauth = line.match(/compauth\s*=\s*([a-z]+)/i);
+        const reason = line.match(/reason\s*=\s*([0-9]+)/i);
+
+        if (spf) {
+          result.spf = spf[1].toLowerCase();
+        }
+        if (dkim) {
+          result.dkim = dkim[1].toLowerCase();
+        }
+        if (dmarc) {
+          result.dmarc = dmarc[1].toLowerCase();
+        }
+        if (compauth) {
+          result.compauth = compauth[1].toLowerCase();
+        }
+        if (reason) {
+          result.compauthReason = reason[1];
+        }
+      }
+
+      return result;
+    }
+
+    function parseReceivedHop(receivedLine, hopIndex) {
+      const fromMatch = receivedLine.match(/from\s+(.+?)(?=\s+by\s+|;|$)/i);
+      const byMatch = receivedLine.match(/by\s+(.+?)(?=\s+with\s+|;|$)/i);
+      const withMatch = receivedLine.match(/with\s+([^;]+?)(?=\s+id\s+|;|$)/i);
+      const dateMatch = receivedLine.match(/;\s*(.+)$/);
+      const ipMatch = receivedLine.match(/\b(?:\d{1,3}\.){3}\d{1,3}\b/);
+      const parsedDate = dateMatch ? Date.parse(dateMatch[1].trim()) : NaN;
+
+      return {
+        hop: hopIndex,
+        from: fromMatch ? fromMatch[1].trim() : "",
+        by: byMatch ? byMatch[1].trim() : "",
+        protocol: withMatch ? withMatch[1].trim() : "",
+        date: dateMatch ? dateMatch[1].trim() : "",
+        ip: ipMatch ? ipMatch[0] : "",
+        timestampMs: Number.isNaN(parsedDate) ? null : parsedDate,
+        delayMs: null
+      };
+    }
+
+    function parseReceivedHops(headers) {
+      const receivedLines = headers.received || [];
+      // RFC behavior: each relay prepends a Received header, so reversing gives sender->recipient flow.
+      const ordered = receivedLines.map(function (line) {
+        return parseReceivedHop(line, 0);
+      }).reverse();
+
+      for (let i = 0; i < ordered.length; i += 1) {
+        ordered[i].hop = i + 1;
+        ordered[i].delayMs = null;
+        if (i > 0) {
+          const previous = ordered[i - 1];
+          if (typeof ordered[i].timestampMs === "number" && typeof previous.timestampMs === "number") {
+            const delta = ordered[i].timestampMs - previous.timestampMs;
+            ordered[i].delayMs = delta >= 0 ? delta : null;
+          }
+        }
+      }
+
+      return ordered;
+    }
+
+    const HEADER_SECURITY_PATTERNS = [
+      /^authentication-results$/,
+      /^auth-results$/,
+      /^received-spf$/,
+      /^arc-/,
+      /^dkim-signature$/,
+      /^x-forefront-antispam-report$/,
+      /^x-microsoft-antispam/,
+      /^x-ms-exchange-organization-/,
+      /^x-ms-exchange-antispam/,
+      /^x-proofpoint/,
+      /^x-barracuda/,
+      /^x-mimecast/,
+      /^x-spam-/,
+      /^x-originating-ip$/
+    ];
+
+    function isSecurityOrSpamHeader(key) {
+      if (HEADER_SECURITY_PATTERNS.some(function (pattern) { return pattern.test(key); })) {
+        return true;
+      }
+      return /(spam|phish|bulk|scl|bcl|pcl|antispam|malware|threat|defender)/i.test(key);
+    }
+
+    function splitHeaders(headers) {
+      const spamHeaders = {};
+      const otherHeaders = {};
+      const sortedKeys = Object.keys(headers).sort();
+
+      for (const key of sortedKeys) {
+        if (isSecurityOrSpamHeader(key)) {
+          spamHeaders[key] = headers[key];
+        } else {
+          otherHeaders[key] = headers[key];
+        }
+      }
+
+      return { spamHeaders, otherHeaders };
+    }
+
+    function formatDuration(ms) {
+      if (typeof ms !== "number") {
+        return "n/a";
+      }
+
+      const totalSecondsPrecise = ms / 1000;
+      const totalSeconds = Math.floor(totalSecondsPrecise);
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+
+      if (hours > 0) {
+        return hours + "h " + minutes + "m " + seconds + "s";
+      }
+      if (minutes > 0) {
+        return minutes + "m " + seconds + "s";
+      }
+      return totalSecondsPrecise.toFixed(1) + " seconds";
+    }
+
+    function parseForefrontFields(headers) {
+      const forefront = firstHeaderValue(headers, "x-forefront-antispam-report");
+      const sclHeader = firstHeaderValue(headers, "x-ms-exchange-organization-scl");
+      const sfvHeader = firstHeaderValue(headers, "x-ms-exchange-organization-sfv");
+      const catHeader = firstHeaderValue(headers, "x-ms-exchange-organization-antispam-report");
+      const bclHeader = firstHeaderValue(headers, "x-ms-exchange-organization-bcl") || firstHeaderValue(headers, "x-microsoft-antispam-bcl");
+      const pclHeader = firstHeaderValue(headers, "x-ms-exchange-organization-pcl") || firstHeaderValue(headers, "x-microsoft-antispam-pcl");
+
+      function extract(field, source) {
+        if (!source) {
+          return "";
+        }
+        const pattern = new RegExp("(?:^|;)\\s*" + field + "\\s*[:=]\\s*([^;]+)", "i");
+        const match = source.match(pattern);
+        return match ? match[1].trim() : "";
+      }
+
+      return {
+        scl: sclHeader || extract("SCL", forefront),
+        sfv: sfvHeader || extract("SFV", forefront),
+        cat: extract("CAT", forefront) || extract("CAT", catHeader),
+        bcl: bclHeader || extract("BCL", forefront),
+        pcl: pclHeader || extract("PCL", forefront)
+      };
+    }
+
+    function extractPolicySignals(headers) {
+      return {
+        ironPortPolicy: firstHeaderValue(headers, "x-ironport-mailflowpolicy"),
+        threatScannerVerdict: firstHeaderValue(headers, "x-threatscannerverdict"),
+        forefront: parseForefrontFields(headers)
+      };
+    }
+
+    function buildNarrativeSummary(parsed) {
+      const lines = [];
+      const policy = parsed.policySignals;
+      const ironPortPolicy = (policy.ironPortPolicy || "").trim();
+      const threatVerdict = (policy.threatScannerVerdict || "").trim();
+
+      if (ironPortPolicy || threatVerdict) {
+        if (/accepted/i.test(ironPortPolicy) && /negative/i.test(threatVerdict)) {
+          lines.push("IronPort accepted the message because mail flow policy is Accepted and threat scanner verdict is Negative.");
+        } else {
+          lines.push(
+            "IronPort signals: MailFlowPolicy=" + (ironPortPolicy || "not present") +
+            ", ThreatScannerVerdict=" + (threatVerdict || "not present") + "."
+          );
+        }
+      }
+
+      const scl = (policy.forefront.scl || "").toUpperCase();
+      const sfv = (policy.forefront.sfv || "").toUpperCase();
+      const cat = (policy.forefront.cat || "").toUpperCase();
+
+      if (scl || sfv || cat) {
+        if ((scl === "1" || scl === "0") && sfv === "NSPM" && cat === "NONE") {
+          lines.push("Exchange Online appears to have delivered the message normally: SCL " + scl + ", SFV NSPM (not spam), CAT NONE (no threat category assigned).");
+        } else {
+          lines.push("Exchange Online anti-spam signals: SCL=" + (scl || "not present") + ", SFV=" + (sfv || "not present") + ", CAT=" + (cat || "not present") + ".");
+        }
+      }
+
+      if (typeof parsed.totalTransitMs === "number") {
+        lines.push("Estimated end-to-end delivery time from Received headers: " + formatDuration(parsed.totalTransitMs) + ".");
+      }
+
+      if (!lines.length) {
+        lines.push("Not enough vendor-specific headers were found for a delivery verdict. Review auth results and hop chain for context.");
+      }
+
+      return lines;
+    }
+
+    function renderHeaderCollection(container, headerMap) {
+      container.innerHTML = "";
+      const keys = Object.keys(headerMap);
+
+      if (!keys.length) {
+        const row = document.createElement("div");
+        row.className = "header-row";
+        row.innerHTML = "<div class=\"header-key\">n/a</div><div class=\"header-value\">No headers found in this category.</div>";
+        container.appendChild(row);
+        return;
+      }
+
+      for (const key of keys) {
+        const values = (headerMap[key] || []).map(escapeHtml).join("<br>");
+        const row = document.createElement("div");
+        row.className = "header-row";
+        row.innerHTML = "<div class=\"header-key\">" + escapeHtml(key) + "</div><div class=\"header-value\">" + values + "</div>";
+        container.appendChild(row);
+      }
+    }
+
+    function extractEnvelopeData(headers) {
+      const from = firstHeaderValue(headers, "from");
+      const to = firstHeaderValue(headers, "to");
+      const subject = firstHeaderValue(headers, "subject");
+      const messageId = firstHeaderValue(headers, "message-id");
+      const date = firstHeaderValue(headers, "date");
+      const returnPath = firstHeaderValue(headers, "return-path");
+      const replyTo = firstHeaderValue(headers, "reply-to");
+      const xOriginatingIp = firstHeaderValue(headers, "x-originating-ip").replace(/[\[\]]/g, "");
+
+      return {
+        from,
+        to,
+        subject,
+        messageId,
+        date,
+        returnPath,
+        replyTo,
+        xOriginatingIp
+      };
+    }
+
+    function getDomain(addressField) {
+      const email = (addressField.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i) || [""])[0];
+      const parts = email.split("@");
+      return parts.length === 2 ? parts[1].toLowerCase() : "";
+    }
+
+    function evaluateFindings(auth, envelope, hops) {
+      const notes = [];
+
+      if ([auth.spf, auth.dkim, auth.dmarc].includes("fail")) {
+        notes.push("At least one authentication mechanism failed (SPF, DKIM, or DMARC). Investigate sender legitimacy.");
+      }
+
+      if (auth.dmarc === "unknown") {
+        notes.push("DMARC result not detected in headers.");
+      }
+
+      const fromDomain = getDomain(envelope.from);
+      const replyDomain = getDomain(envelope.replyTo);
+      if (fromDomain && replyDomain && fromDomain !== replyDomain) {
+        notes.push("From and Reply-To domains do not match. This can indicate impersonation patterns.");
+      }
+
+      if (hops.length > 8) {
+        notes.push("Header contains an unusually long Received chain.");
+      }
+
+      if (!hops.length) {
+        notes.push("No Received headers were found. Source routing cannot be validated.");
+      }
+
+      if (!notes.length) {
+        notes.push("No obvious red flags detected from high-level checks. Continue with full content and URL analysis.");
+      }
+
+      return notes;
+    }
+
+    function classifyResult(resultValue) {
+      const value = (resultValue || "").toLowerCase();
+      if (value === "pass") {
+        return "ok";
+      }
+      if (["fail", "permerror", "temperror", "softfail"].includes(value)) {
+        return "bad";
+      }
+      if (["neutral", "none", "unknown"].includes(value)) {
+        return "warn";
+      }
+      return "muted";
+    }
+
+    function classifyIronPortPolicy(value) {
+      const v = (value || "").toLowerCase();
+      if (!v) {
+        return "muted";
+      }
+      if (v.includes("accept") || v.includes("allow") || v.includes("permit")) {
+        return "ok";
+      }
+      if (v.includes("block") || v.includes("reject") || v.includes("quarantine") || v.includes("drop")) {
+        return "bad";
+      }
+      return "warn";
+    }
+
+    function classifyThreatScannerVerdict(value) {
+      const v = (value || "").toLowerCase();
+      if (!v) {
+        return "muted";
+      }
+      if (v.includes("negative") || v.includes("clean") || v.includes("benign")) {
+        return "ok";
+      }
+      if (v.includes("malicious") || v.includes("phish") || v.includes("spam") || v.includes("positive") || v.includes("infected")) {
+        return "bad";
+      }
+      return "warn";
+    }
+
+    function classifyScl(value) {
+      const n = parseInt(value, 10);
+      if (Number.isNaN(n)) {
+        return "muted";
+      }
+      if (n <= 1) {
+        return "ok";
+      }
+      if (n >= 5) {
+        return "bad";
+      }
+      return "warn";
+    }
+
+    function classifyBcl(value) {
+      const n = parseInt(value, 10);
+      if (Number.isNaN(n)) {
+        return "muted";
+      }
+      if (n <= 3) {
+        return "ok";
+      }
+      if (n >= 7) {
+        return "bad";
+      }
+      return "warn";
+    }
+
+    function classifyPcl(value) {
+      const n = parseInt(value, 10);
+      if (Number.isNaN(n)) {
+        return "muted";
+      }
+      if (n >= 5) {
+        return "bad";
+      }
+      if (n >= 3) {
+        return "warn";
+      }
+      return "phish";
+    }
+
+    function classifyCat(value) {
+      const v = (value || "").toUpperCase();
+      if (!v) {
+        return "muted";
+      }
+      if (v === "NONE") {
+        return "ok";
+      }
+      if (v === "PHISH" || v === "MALW" || v === "SPAM") {
+        return "bad";
+      }
+      return "warn";
+    }
+
+    function classifySfv(value) {
+      const v = (value || "").toUpperCase();
+      if (!v) {
+        return "muted";
+      }
+      if (v === "NSPM") {
+        return "ok";
+      }
+      if (v === "SPM") {
+        return "bad";
+      }
+      return "warn";
+    }
+
+    function classifyHostLabel(text) {
+      const source = (text || "").toLowerCase();
+      if (!source) {
+        return "Mail Transfer Agent";
+      }
+      if (source.includes("iphmx.com")) {
+        return "IronPort Device";
+      }
+      if (source.includes("service-now.com")) {
+        return "Service Now";
+      }
+      if (source.includes("outlook.office365.com")) {
+        return "EXO (Exchange Online)";
+      }
+      if (source.includes("proofpoint") || source.includes("pphosted") || source.includes("pps")) {
+        return "Proofpoint";
+      }
+      if (source.includes("ironport") || source.includes("cisco")) {
+        return "Deloitte IronPort";
+      }
+      if (source.includes("protection.outlook.com") || source.includes("outlook.com")) {
+        return "EOP (Exchange Online Protection)";
+      }
+      if (source.includes("exchange")) {
+        return "Exchange Transport";
+      }
+      if (source.includes("gmail") || source.includes("google")) {
+        return "Google Mail Infrastructure";
+      }
+
+      const token = (text || "").split(/[\s(]/)[0];
+      return token || "Mail Transfer Agent";
+    }
+
+    function buildRouteStory(hops) {
+      const nodes = ["Sender Mailbox"];
+      for (let i = 0; i < hops.length; i += 1) {
+        nodes.push(classifyHostLabel(hops[i].from));
+        nodes.push(classifyHostLabel(hops[i].by));
+      }
+      nodes.push("Recipient Mailbox");
+
+      const compact = [];
+      for (const node of nodes) {
+        if (!compact.length || compact[compact.length - 1] !== node) {
+          compact.push(node);
+        }
+      }
+      return compact;
+    }
+
+    function routeStepForHop(hop) {
+      return classifyHostLabel(hop.from) + " -> " + classifyHostLabel(hop.by);
+    }
+
+    function renderPill(container, text, tone, hint) {
+      const item = document.createElement("span");
+      item.className = "pill " + tone;
+      item.textContent = text;
+      if (hint) {
+        item.title = hint;
+      }
+      container.appendChild(item);
+      return item;
+    }
+
+    async function copyToClipboard(text) {
+      try {
+        await navigator.clipboard.writeText(text || "");
+        return true;
+      } catch (error) {
+        return false;
+      }
+    }
+
+    function renderActionPill(container, text, tone, action) {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "pill " + tone + " interactive";
+      item.textContent = text;
+      item.title = action.hint;
+
+      item.addEventListener("click", async function () {
+        if (action.type === "scroll") {
+          const target = document.getElementById(action.targetId);
+          if (target) {
+            target.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+          return;
+        }
+
+        if (action.type === "copy") {
+          const copied = await copyToClipboard(action.value || "");
+          const original = item.textContent;
+          item.textContent = copied ? "Copied" : "Copy failed";
+          setTimeout(function () {
+            item.textContent = original;
+          }, 900);
+        }
+      });
+
+      container.appendChild(item);
+      return item;
+    }
+
+    function compactMessageId(messageId) {
+      if (!messageId) {
+        return "n/a";
+      }
+
+      let maxLen = 44;
+      if (window.innerWidth >= 1500) {
+        maxLen = 78;
+      } else if (window.innerWidth >= 1200) {
+        maxLen = 62;
+      } else if (window.innerWidth >= 900) {
+        maxLen = 52;
+      }
+
+      if (messageId.length <= maxLen) {
+        return messageId;
+      }
+
+      const head = Math.floor((maxLen - 3) * 0.56);
+      const tail = Math.floor((maxLen - 3) * 0.44);
+      return messageId.slice(0, head) + "..." + messageId.slice(-tail);
+    }
+
+    function resetHeaderListExpansion() {
+      ui.spamHeaders.classList.remove("expanded");
+      ui.otherHeaders.classList.remove("expanded");
+      ui.toggleSpamHeaders.textContent = "Show More";
+      ui.toggleOtherHeaders.textContent = "Show More";
+    }
+
+    function toggleHeaderList(container, button) {
+      const isExpanded = container.classList.toggle("expanded");
+      button.textContent = isExpanded ? "Show Less" : "Show More";
+    }
+
+    function resetHopChainExpansion() {
+      ui.hopTableWrap.classList.remove("expanded");
+      ui.toggleHopChain.textContent = "Show More";
+    }
+
+    function toggleHopChain() {
+      const isExpanded = ui.hopTableWrap.classList.toggle("expanded");
+      ui.toggleHopChain.textContent = isExpanded ? "Show Less" : "Show More";
+    }
+
+    function renderSummary(parsed) {
+      ui.routingPills.innerHTML = "";
+      ui.authPills.innerHTML = "";
+      ui.ironPortPills.innerHTML = "";
+      ui.microsoftPills.innerHTML = "";
+      ui.details.innerHTML = "";
+      ui.hopTable.innerHTML = "";
+      ui.findings.innerHTML = "";
+      ui.routeInline.innerHTML = "";
+      ui.spamHeaders.innerHTML = "";
+      ui.otherHeaders.innerHTML = "";
+      resetHeaderListExpansion();
+      resetHopChainExpansion();
+
+      renderPill(
+        ui.routingPills,
+        "Hops: " + parsed.hops.length,
+        parsed.hops.length ? "ok" : "warn",
+        "Total number of Received hops found in the header chain."
+      );
+      renderPill(
+        ui.routingPills,
+        "End-to-End: " + formatDuration(parsed.totalTransitMs),
+        parsed.totalTransitMs ? "ok" : "warn",
+        "Estimated end-to-end delivery time from Received headers."
+      );
+
+      renderPill(ui.authPills, "SPF: " + parsed.auth.spf, classifyResult(parsed.auth.spf), "SPF: pass = sender identity validated; fail = high suspicion; softfail = investigate; none = common, but worth investigating.");
+      renderPill(ui.authPills, "DKIM: " + parsed.auth.dkim, classifyResult(parsed.auth.dkim), "DKIM: pass = signature validated; fail = mismatch or potential tampering; none = unsigned.");
+      renderPill(ui.authPills, "DMARC: " + parsed.auth.dmarc, classifyResult(parsed.auth.dmarc), "DMARC: pass = aligned sender identity; fail = policy/auth alignment failed.");
+      renderPill(
+        ui.authPills,
+        "CompAuth: " + parsed.auth.compauth + (parsed.auth.compauthReason ? " (Reason " + parsed.auth.compauthReason + ")" : ""),
+        classifyResult(parsed.auth.compauth),
+        "Composite Authentication (Microsoft): pass indicates overall identity confidence; fail indicates elevated suspicion."
+      );
+
+      const iron = parsed.policySignals;
+      let ironCount = 0;
+      if (iron.ironPortPolicy) {
+        ironCount += 1;
+        renderPill(
+          ui.ironPortPills,
+          "MailFlowPolicy: " + iron.ironPortPolicy,
+          classifyIronPortPolicy(iron.ironPortPolicy),
+          "X-IronPort-MailFlowPolicy. Accepted/Allow usually indicates clean flow. Reject/Quarantine/Block are higher-risk outcomes."
+        );
+      }
+      if (iron.threatScannerVerdict) {
+        ironCount += 1;
+        renderPill(
+          ui.ironPortPills,
+          "ThreatScannerVerdict: " + iron.threatScannerVerdict,
+          classifyThreatScannerVerdict(iron.threatScannerVerdict),
+          "X-ThreatScannerVerdict. Negative/Clean are lower risk. Positive/Malicious/Phish/Spam indicate higher risk."
+        );
+      }
+      ui.ironPortSectionBlock.style.display = ironCount ? "block" : "none";
+
+      const ms = parsed.policySignals.forefront;
+      let msCount = 0;
+      if (ms.scl) {
+        msCount += 1;
+        renderPill(ui.microsoftPills, "SCL: " + ms.scl, classifyScl(ms.scl), "SCL scale: -1 bypass spam filtering; 0 not spam; 1 very low confidence; 5-6 spam; 7-9 high confidence spam.");
+      }
+      if (ms.bcl) {
+        msCount += 1;
+        renderPill(ui.microsoftPills, "BCL: " + ms.bcl, classifyBcl(ms.bcl), "BCL scale: 0-3 not bulk; 4-6 marketing/newsletter; 7-9 very bulk-like.");
+      }
+      if (ms.pcl) {
+        msCount += 1;
+        renderPill(ui.microsoftPills, "Phish Score (PCL): " + ms.pcl, classifyPcl(ms.pcl), "PCL indicates phishing confidence. Higher values indicate stronger phishing likelihood.");
+      }
+      if (ms.sfv) {
+        msCount += 1;
+        renderPill(ui.microsoftPills, "SFV: " + ms.sfv, classifySfv(ms.sfv), "SFV = spam filter verdict.");
+      }
+      if (ms.cat) {
+        msCount += 1;
+        renderPill(ui.microsoftPills, "CAT: " + ms.cat, classifyCat(ms.cat), "CAT categories: NONE clean, PHISH phishing, MALW malware, SPAM spam.");
+      }
+      ui.microsoftSectionBlock.style.display = msCount ? "block" : "none";
+
+      const routeNodes = buildRouteStory(parsed.hops);
+      if (routeNodes.length) {
+        ui.routeInline.innerHTML = "<strong>Route:</strong> " + routeNodes.map(escapeHtml).join(" -> ");
+      } else {
+        ui.routeInline.textContent = "Route: n/a";
+      }
+
+      const detailRows = [
+        ["From", parsed.envelope.from],
+        ["To", parsed.envelope.to],
+        ["Subject", parsed.envelope.subject],
+        ["Date", parsed.envelope.date],
+        ["Message-ID", parsed.envelope.messageId],
+        ["Return-Path", parsed.envelope.returnPath],
+        ["Reply-To", parsed.envelope.replyTo],
+        ["X-Originating-IP", parsed.envelope.xOriginatingIp]
+      ];
+
+      for (const [label, value] of detailRows) {
+        const dt = document.createElement("dt");
+        const dd = document.createElement("dd");
+        dt.textContent = label;
+
+        if (label === "Message-ID") {
+          const wrap = document.createElement("span");
+          wrap.className = "value-with-copy";
+
+          const valueSpan = document.createElement("span");
+          valueSpan.textContent = value || "n/a";
+          wrap.appendChild(valueSpan);
+
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "copy-icon-btn";
+          btn.textContent = "⧉";
+          btn.title = "Copy Message-ID";
+          btn.addEventListener("click", async function () {
+            const copied = await copyToClipboard(value || "");
+            const original = btn.textContent;
+            btn.textContent = copied ? "✓" : "!";
+            setTimeout(function () {
+              btn.textContent = original;
+            }, 850);
+          });
+          wrap.appendChild(btn);
+          dd.appendChild(wrap);
+        } else {
+          dd.textContent = value || "n/a";
+        }
+
+        ui.details.appendChild(dt);
+        ui.details.appendChild(dd);
+      }
+
+      for (const hop of parsed.hops) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = [
+          "<td>" + hop.hop + "</td>",
+          "<td>" + escapeHtml(routeStepForHop(hop)) + "</td>",
+          "<td>" + escapeHtml(hop.from || "n/a") + "</td>",
+          "<td>" + escapeHtml(hop.by || "n/a") + "</td>",
+          "<td>" + escapeHtml(hop.ip || "n/a") + "</td>",
+          "<td>" + escapeHtml(hop.protocol || "n/a") + "</td>",
+          "<td>" + escapeHtml(hop.date || "n/a") + "</td>",
+          "<td>" + escapeHtml(formatDuration(hop.delayMs)) + "</td>"
+        ].join("");
+        ui.hopTable.appendChild(tr);
+      }
+
+      for (const finding of parsed.findings) {
+        const li = document.createElement("li");
+        li.textContent = finding;
+        ui.findings.appendChild(li);
+      }
+
+      renderHeaderCollection(ui.spamHeaders, parsed.groupedHeaders.spamHeaders);
+      renderHeaderCollection(ui.otherHeaders, parsed.groupedHeaders.otherHeaders);
+
+    }
+
+    function escapeHtml(str) {
+      return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function parseHeaders(raw) {
+      const headers = parseHeaderMap(raw);
+      const auth = parseAuthResults(headers);
+      const hops = parseReceivedHops(headers);
+      const envelope = extractEnvelopeData(headers);
+      const findings = evaluateFindings(auth, envelope, hops);
+      const groupedHeaders = splitHeaders(headers);
+      const totalTransitMs = hops.length > 1 && typeof hops[0].timestampMs === "number" && typeof hops[hops.length - 1].timestampMs === "number"
+        ? (hops[hops.length - 1].timestampMs - hops[0].timestampMs)
+        : null;
+      const policySignals = extractPolicySignals(headers);
+      const partial = { headers, auth, hops, envelope, findings, groupedHeaders, totalTransitMs, policySignals };
+      const narrativeSummary = buildNarrativeSummary(partial);
+      return { headers, auth, hops, envelope, findings, groupedHeaders, totalTransitMs, policySignals, narrativeSummary };
+    }
+
+    function analyze() {
+      const raw = ui.input.value;
+      if (!normalizeHeaderInput(raw)) {
+        alert("Paste email headers first.");
+        return;
+      }
+
+      const parsed = parseHeaders(raw);
+      renderSummary(parsed);
+    }
+
+    function clearAll() {
+      ui.input.value = "";
+      ui.routingPills.innerHTML = "";
+      ui.authPills.innerHTML = "";
+      ui.ironPortPills.innerHTML = "";
+      ui.microsoftPills.innerHTML = "";
+      ui.details.innerHTML = "";
+      ui.hopTable.innerHTML = "";
+      ui.findings.innerHTML = "";
+      ui.routeInline.innerHTML = "";
+      ui.spamHeaders.innerHTML = "";
+      ui.otherHeaders.innerHTML = "";
+      ui.ironPortSectionBlock.style.display = "none";
+      ui.microsoftSectionBlock.style.display = "none";
+      resetHeaderListExpansion();
+      resetHopChainExpansion();
+      ui.input.focus();
+    }
+
+    ui.analyzeBtn.addEventListener("click", analyze);
+    ui.clearBtn.addEventListener("click", clearAll);
+    ui.sampleBtn.addEventListener("click", function () {
+      ui.input.value = SAMPLE_HEADERS;
+      analyze();
+    });
+    ui.toggleSpamHeaders.addEventListener("click", function () {
+      toggleHeaderList(ui.spamHeaders, ui.toggleSpamHeaders);
+    });
+    ui.toggleOtherHeaders.addEventListener("click", function () {
+      toggleHeaderList(ui.otherHeaders, ui.toggleOtherHeaders);
+    });
+    ui.toggleHopChain.addEventListener("click", toggleHopChain);
+  </script>
+</body>
+</html>
