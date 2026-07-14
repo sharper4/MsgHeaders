@@ -586,8 +586,7 @@ If Python is not installed on this machine:
       </article>
 
       <article class="card">
-        <h2 id="routingSection" class="heading-line">Authentication & Routing</h2>
-        <div id="routingPills" class="status-row"></div>
+        <h2 id="routingSection" class="heading-line">Routing</h2>
 
         <h3 class="heading-line">Auth Results</h3>
         <div id="authPills" class="status-row"></div>
@@ -601,6 +600,9 @@ If Python is not installed on this machine:
           <h3 class="heading-line">Microsoft Threat Signals</h3>
           <div id="microsoftPills" class="status-row"></div>
         </section>
+
+        <h3 class="heading-line">Routing</h3>
+        <div id="routingPills" class="status-row"></div>
 
         <h3 class="heading-line with-action"><span>Received Hop Chain</span><button id="toggleHopChain" class="section-toggle" type="button">Show More</button></h3>
         <div id="routeInline" class="route-inline"></div>
@@ -920,9 +922,38 @@ If Python is not installed on this machine:
     }
 
     function extractPolicySignals(headers) {
+      const allPairs = [];
+      const allKeys = Object.keys(headers || {});
+      for (const key of allKeys) {
+        for (const value of headers[key] || []) {
+          allPairs.push({ key: key, value: String(value || "") });
+        }
+      }
+
+      function matchingKeys(regex) {
+        const out = [];
+        for (const pair of allPairs) {
+          if (regex.test(pair.key) || regex.test(pair.value)) {
+            out.push(pair.key);
+          }
+        }
+        return Array.from(new Set(out));
+      }
+
+      const grayMailHeaderKeys = matchingKeys(/gray\s*mail|graymail/i);
+      const proxyWrappedHeaderKeys = matchingKeys(/proxy\s*wrapped|proxywrapped/i);
+      const hasIronPortContext = allKeys.some(function (key) {
+        return key.indexOf("x-ironport") === 0 || key.indexOf("x-threatscanner") === 0;
+      }) || grayMailHeaderKeys.length > 0 || proxyWrappedHeaderKeys.length > 0;
+
       return {
         ironPortPolicy: firstHeaderValue(headers, "x-ironport-mailflowpolicy"),
         threatScannerVerdict: firstHeaderValue(headers, "x-threatscannerverdict"),
+        hasIronPortContext: hasIronPortContext,
+        grayMailDetected: grayMailHeaderKeys.length > 0,
+        grayMailHeaderKeys: grayMailHeaderKeys,
+        proxyWrappedUrlFound: proxyWrappedHeaderKeys.length > 0,
+        proxyWrappedHeaderKeys: proxyWrappedHeaderKeys,
         forefront: parseForefrontFields(headers)
       };
     }
@@ -932,8 +963,10 @@ If Python is not installed on this machine:
       const policy = parsed.policySignals;
       const ironPortPolicy = (policy.ironPortPolicy || "").trim();
       const threatVerdict = (policy.threatScannerVerdict || "").trim();
+      const grayMailDetected = Boolean(policy.grayMailDetected);
+      const proxyWrappedUrlFound = Boolean(policy.proxyWrappedUrlFound);
 
-      if (ironPortPolicy || threatVerdict) {
+      if (ironPortPolicy || threatVerdict || grayMailDetected || proxyWrappedUrlFound) {
         if (/accepted/i.test(ironPortPolicy) && /negative/i.test(threatVerdict)) {
           lines.push("IronPort accepted the message because mail flow policy is Accepted and threat scanner verdict is Negative.");
         } else {
@@ -941,6 +974,12 @@ If Python is not installed on this machine:
             "IronPort signals: MailFlowPolicy=" + (ironPortPolicy || "not present") +
             ", ThreatScannerVerdict=" + (threatVerdict || "not present") + "."
           );
+        }
+        if (grayMailDetected) {
+          lines.push("IronPort GrayMail signal detected (bulk/marketing-style classification). Review sender trust and user expectations.");
+        }
+        if (proxyWrappedUrlFound) {
+          lines.push("ProxyWrapped URL indicator detected in headers (URL rewriting/protection was applied). Review rewritten links if investigating user-click risk.");
         }
       }
 
@@ -1154,11 +1193,19 @@ If Python is not installed on this machine:
 
       const ironPortPolicy = (policySignals && policySignals.ironPortPolicy ? policySignals.ironPortPolicy : "").trim();
       const threatVerdict = (policySignals && policySignals.threatScannerVerdict ? policySignals.threatScannerVerdict : "").trim();
+      const grayMailDetected = Boolean(policySignals && policySignals.grayMailDetected);
+      const proxyWrappedUrlFound = Boolean(policySignals && policySignals.proxyWrappedUrlFound);
       if (ironPortPolicy && classifyIronPortPolicy(ironPortPolicy) !== "ok") {
         notes.push("MailFlowPolicy result: " + ironPortPolicy + " - policy outcome needs review.");
       }
       if (threatVerdict && classifyThreatScannerVerdict(threatVerdict) !== "ok") {
         notes.push("ThreatScannerVerdict result: " + threatVerdict + " - scanner did not return a clean/negative verdict.");
+      }
+      if (grayMailDetected) {
+        notes.push("IronPort GrayMail indicator detected - message may be bulk/marketing style mail.");
+      }
+      if (proxyWrappedUrlFound) {
+        notes.push("ProxyWrapped URL indicator detected - links appear to have been rewritten by security controls.");
       }
 
       const slowHops = hops.filter(function (hop) {
@@ -1580,7 +1627,7 @@ If Python is not installed on this machine:
         lines.push("- " + finding);
       }
       lines.push("");
-      lines.push("Authentication & Routing");
+      lines.push("Routing");
       lines.push("Hops: " + parsed.hops.length);
       lines.push("End-to-End: " + formatDuration(parsed.totalTransitMs));
       lines.push("SPF: " + parsed.auth.spf);
@@ -1662,7 +1709,9 @@ If Python is not installed on this machine:
         exportPillHtml("SPF: " + parsed.auth.spf, classifyResult(parsed.auth.spf)),
         exportPillHtml("DKIM: " + parsed.auth.dkim, classifyResult(parsed.auth.dkim)),
         exportPillHtml("DMARC: " + parsed.auth.dmarc, classifyResult(parsed.auth.dmarc)),
-        exportPillHtml("CompAuth: " + parsed.auth.compauth + (parsed.auth.compauthReason ? " (Reason " + parsed.auth.compauthReason + ")" : ""), classifyResult(parsed.auth.compauth))
+        exportPillHtml("CompAuth: " + parsed.auth.compauth + (parsed.auth.compauthReason ? " (Reason " + parsed.auth.compauthReason + ")" : ""), classifyResult(parsed.auth.compauth)),
+        exportPillHtml("Routing Hops: " + parsed.hops.length, parsed.hops.length ? "ok" : "warn"),
+        exportPillHtml("End-to-End: " + formatDuration(parsed.totalTransitMs), parsed.totalTransitMs ? "ok" : "warn")
       ].join("");
 
       const microsoftPills = [
@@ -1675,7 +1724,9 @@ If Python is not installed on this machine:
 
       const ironPortPills = [
         parsed.policySignals.ironPortPolicy ? exportPillHtml("MailFlowPolicy: " + parsed.policySignals.ironPortPolicy, classifyIronPortPolicy(parsed.policySignals.ironPortPolicy)) : "",
-        parsed.policySignals.threatScannerVerdict ? exportPillHtml("ThreatScannerVerdict: " + parsed.policySignals.threatScannerVerdict, classifyThreatScannerVerdict(parsed.policySignals.threatScannerVerdict)) : ""
+        parsed.policySignals.threatScannerVerdict ? exportPillHtml("ThreatScannerVerdict: " + parsed.policySignals.threatScannerVerdict, classifyThreatScannerVerdict(parsed.policySignals.threatScannerVerdict)) : "",
+        exportPillHtml("GrayMail: " + (parsed.policySignals.grayMailDetected ? "Detected" : "Not Detected"), parsed.policySignals.grayMailDetected ? "warn" : "ok"),
+        exportPillHtml("ProxyWrapped URL: " + (parsed.policySignals.proxyWrappedUrlFound ? "Found" : "Not Found"), parsed.policySignals.proxyWrappedUrlFound ? "warn" : "ok")
       ].join("");
 
       const detailTable = "<table style=\"border-collapse:collapse;width:100%;max-width:900px;\">" +
@@ -1700,7 +1751,7 @@ If Python is not installed on this machine:
         "<h2 style=\"margin:0 0 14px;color:#12344d;font-size:22px;\">Email Header Analyzer Results</h2>" +
         exportSectionHtml("Key Header Values", detailTable) +
         exportSectionHtml("Potential Findings", findingsList) +
-        exportSectionHtml("Authentication & Routing", routingHtml) +
+        exportSectionHtml("Routing", routingHtml) +
         "</div>";
     }
 
@@ -1886,6 +1937,7 @@ If Python is not installed on this machine:
 
       const iron = parsed.policySignals;
       let ironCount = 0;
+      const hasIronContext = Boolean(iron.hasIronPortContext || iron.ironPortPolicy || iron.threatScannerVerdict || iron.grayMailDetected || iron.proxyWrappedUrlFound);
       if (iron.ironPortPolicy) {
         ironCount += 1;
         renderActionPill(
@@ -1910,6 +1962,34 @@ If Python is not installed on this machine:
             type: "jumpHeader",
             hint: "X-ThreatScannerVerdict. Negative/Clean are lower risk. Positive/Malicious/Phish/Spam indicate higher risk. Click to jump to this header.",
             headerKeys: ["x-threatscannerverdict"],
+            fallbackId: "spamSection"
+          }
+        );
+      }
+      if (iron.grayMailDetected) {
+        ironCount += 1;
+        renderActionPill(
+          ui.ironPortPills,
+          "GrayMail: Detected",
+          "warn",
+          {
+            type: "jumpHeader",
+            hint: "GrayMail usually indicates bulk or marketing-style email classification, which may be expected newsletters or lower-priority promotional content. Click to jump to matching headers.",
+            headerKeys: (iron.grayMailHeaderKeys && iron.grayMailHeaderKeys.length) ? iron.grayMailHeaderKeys : ["x-ironport-mailflowpolicy"],
+            fallbackId: "spamSection"
+          }
+        );
+      }
+      if (hasIronContext) {
+        ironCount += 1;
+        renderActionPill(
+          ui.ironPortPills,
+          "ProxyWrapped URL: " + (iron.proxyWrappedUrlFound ? "Found" : "Not Found"),
+          iron.proxyWrappedUrlFound ? "warn" : "ok",
+          {
+            type: "jumpHeader",
+            hint: "ProxyWrapped URL indicates URL rewriting/protection was applied (common in secure email gateways and click-protection workflows).",
+            headerKeys: (iron.proxyWrappedHeaderKeys && iron.proxyWrappedHeaderKeys.length) ? iron.proxyWrappedHeaderKeys : ["x-ironport-mailflowpolicy", "x-threatscannerverdict"],
             fallbackId: "spamSection"
           }
         );
@@ -1979,8 +2059,7 @@ If Python is not installed on this machine:
         ["Date", parsed.envelope.date],
         ["Message-ID", parsed.envelope.messageId],
         ["Return-Path", parsed.envelope.returnPath],
-        ["Reply-To", parsed.envelope.replyTo],
-        ["X-Originating-IP", parsed.envelope.xOriginatingIp]
+        ["Reply-To", parsed.envelope.replyTo]
       ];
 
       for (const [label, value] of detailRows) {
