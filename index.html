@@ -479,6 +479,11 @@ If Python is not installed on this machine:
       color: #d7eaff;
     }
 
+    .route-node-internal {
+      color: #9fc5e3;
+      font-weight: 700;
+    }
+
     .hint {
       color: #b4d0e6;
       font-size: 0.83rem;
@@ -1251,30 +1256,22 @@ If Python is not installed on this machine:
       return compact;
     }
 
-    function routeStepForHop(hop) {
-      return classifyHostLabel(hop.from) + " -> " + classifyHostLabel(hop.by);
-    }
-
-    function buildIronPortRoutePerspective(routeNodes) {
-      if (!routeNodes || !routeNodes.length) {
-        return "";
-      }
-
-      const pivotIndex = routeNodes.findIndex(function (node) {
-        const value = (node || "").toLowerCase();
-        return value.includes("ironport");
+    function renderRouteStory(routeNodes) {
+      const pivot = routeNodes.findIndex(function (node) {
+        return node === "IronPort Device";
       });
 
-      if (pivotIndex < 0) {
-        return "";
-      }
+      return routeNodes.map(function (node, index) {
+        const safeNode = escapeHtml(node);
+        if (pivot >= 0 && index >= pivot) {
+          return "<span class=\"route-node-internal\">" + safeNode + "</span>";
+        }
+        return safeNode;
+      }).join(" -> ");
+    }
 
-      const left = routeNodes.slice(0, pivotIndex);
-      const right = routeNodes.slice(pivotIndex + 1);
-      const externalText = left.length ? left.join(" -> ") : "n/a";
-      const internalText = right.length ? right.join(" -> ") : "n/a";
-
-      return "External (left of IronPort): " + externalText + " | Internal (right of IronPort): " + internalText;
+    function routeStepForHop(hop) {
+      return classifyHostLabel(hop.from) + " -> " + classifyHostLabel(hop.by);
     }
 
     function renderPill(container, text, tone, hint) {
@@ -1589,12 +1586,7 @@ If Python is not installed on this machine:
 
       const routeNodes = buildRouteStory(parsed.hops);
       if (routeNodes.length) {
-        const routeText = routeNodes.map(escapeHtml).join(" -> ");
-        const perspective = buildIronPortRoutePerspective(routeNodes);
-        ui.routeInline.innerHTML = "<strong>Route:</strong> " + routeText;
-        if (perspective) {
-          ui.routeInline.innerHTML += "<br><span class=\"hint\">" + escapeHtml(perspective) + "</span>";
-        }
+        ui.routeInline.innerHTML = "<strong>Route:</strong> " + renderRouteStory(routeNodes);
       } else {
         ui.routeInline.textContent = "Route: n/a";
       }
