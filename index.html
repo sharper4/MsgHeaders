@@ -43,6 +43,14 @@ If Python is not installed on this machine:
         cursor: pointer;
         flex-shrink: 0;
       }
+
+      .copy-icon-btn.wide {
+        width: auto;
+        min-width: 24px;
+        padding: 0 8px;
+        font-size: 0.76rem;
+        font-weight: 700;
+      }
       --muted: #9bb5ca;
       --line: #24425a;
       --brand: #1a5f96;
@@ -505,6 +513,25 @@ If Python is not installed on this machine:
       cursor: pointer;
     }
 
+    .floating-action {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      z-index: 20;
+      border: 1px solid #355a7b;
+      background: rgba(23, 58, 85, 0.94);
+      color: #d2e7fb;
+      border-radius: 999px;
+      padding: 10px 14px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      box-shadow: 0 10px 24px rgba(3, 10, 18, 0.35);
+    }
+
+    .floating-action.is-hidden {
+      display: none;
+    }
+
     @keyframes rise {
       from {
         opacity: 0;
@@ -553,18 +580,17 @@ If Python is not installed on this machine:
 
     <section id="resultsShell" class="shell is-hidden" aria-live="polite">
       <article class="card">
-        <h2 class="heading-line">Summary</h2>
+        <h2 class="heading-line with-action"><span>Summary</span><button id="copyResultsBtn" class="section-toggle" type="button">Copy Results</button></h2>
 
         <h3 class="heading-line">Key Header Values</h3>
         <dl id="headerDetails" class="kv-grid"></dl>
 
-        <h3 class="heading-line">Potential Findings</h3>
+        <h3 class="heading-line with-action"><span>Potential Findings</span><button id="copyFindingsBtn" class="section-toggle" type="button">Copy Findings</button></h3>
         <ul id="findings" class="flags"></ul>
       </article>
 
       <article class="card">
-        <h2 id="routingSection" class="heading-line">Authentication & Routing</h2>
-        <div id="routingPills" class="status-row"></div>
+        <h2 id="routingSection" class="heading-line">Routing</h2>
 
         <h3 class="heading-line">Auth Results</h3>
         <div id="authPills" class="status-row"></div>
@@ -578,6 +604,9 @@ If Python is not installed on this machine:
           <h3 class="heading-line">Microsoft Threat Signals</h3>
           <div id="microsoftPills" class="status-row"></div>
         </section>
+
+        <h3 class="heading-line">Routing</h3>
+        <div id="routingPills" class="status-row"></div>
 
         <h3 class="heading-line with-action"><span>Received Hop Chain</span><button id="toggleHopChain" class="section-toggle" type="button">Show More</button></h3>
         <div id="routeInline" class="route-inline"></div>
@@ -620,6 +649,7 @@ If Python is not installed on this machine:
       </article>
 
     </section>
+    <button id="scrollTopBtn" class="floating-action is-hidden" type="button">Go To Top</button>
   </main>
 
   <script>
@@ -628,6 +658,9 @@ If Python is not installed on this machine:
       analyzeBtn: document.getElementById("analyzeBtn"),
       clearBtn: document.getElementById("clearBtn"),
       sampleBtn: document.getElementById("sampleBtn"),
+      copyResultsBtn: document.getElementById("copyResultsBtn"),
+      copyFindingsBtn: document.getElementById("copyFindingsBtn"),
+      scrollTopBtn: document.getElementById("scrollTopBtn"),
       resultsShell: document.getElementById("resultsShell"),
       routingPills: document.getElementById("routingPills"),
       authPills: document.getElementById("authPills"),
@@ -649,6 +682,8 @@ If Python is not installed on this machine:
 
     ui.ironPortSectionBlock.style.display = "none";
     ui.microsoftSectionBlock.style.display = "none";
+
+    let currentParsed = null;
 
     const SAMPLE_HEADERS = [
       "Received: from mail-io1-f42.google.com (mail-io1-f42.google.com [209.85.166.42]) by NAM11-CO1-obe.outbound.protection.outlook.com (10.152.32.179) with Microsoft SMTP Server (version=TLS1_2, cipher=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384) id 15.20.8517.24 via Frontend Transport; Tue, 14 Jul 2026 10:18:20 +0000",
@@ -891,9 +926,41 @@ If Python is not installed on this machine:
     }
 
     function extractPolicySignals(headers) {
+      const allPairs = [];
+      const allKeys = Object.keys(headers || {});
+      for (const key of allKeys) {
+        for (const value of headers[key] || []) {
+          allPairs.push({ key: key, value: String(value || "") });
+        }
+      }
+
+      function matchingKeys(regex) {
+        const out = [];
+        for (const pair of allPairs) {
+          if (regex.test(pair.key) || regex.test(pair.value)) {
+            out.push(pair.key);
+          }
+        }
+        return Array.from(new Set(out));
+      }
+
+      const ironPortGray = firstHeaderValue(headers, "x-ironport-gray");
+      const grayMailHeaderKeys = matchingKeys(/gray\s*mail|graymail|x-ironport-gray|\bironport-gray\b/i);
+      const proxyWrappedHeaderKeys = matchingKeys(/proxy\s*wrapped|proxywrapped/i);
+      const hasIronPortContext = allKeys.some(function (key) {
+        return key.indexOf("x-ironport") === 0 || key.indexOf("x-threatscanner") === 0;
+      }) || grayMailHeaderKeys.length > 0 || proxyWrappedHeaderKeys.length > 0;
+      const grayMailDetected = /\bgray\b/i.test(ironPortGray || "") || grayMailHeaderKeys.length > 0;
+
       return {
         ironPortPolicy: firstHeaderValue(headers, "x-ironport-mailflowpolicy"),
         threatScannerVerdict: firstHeaderValue(headers, "x-threatscannerverdict"),
+        hasIronPortContext: hasIronPortContext,
+        grayMailDetected: grayMailDetected,
+        grayMailValue: ironPortGray,
+        grayMailHeaderKeys: grayMailHeaderKeys,
+        proxyWrappedUrlFound: proxyWrappedHeaderKeys.length > 0,
+        proxyWrappedHeaderKeys: proxyWrappedHeaderKeys,
         forefront: parseForefrontFields(headers)
       };
     }
@@ -903,8 +970,10 @@ If Python is not installed on this machine:
       const policy = parsed.policySignals;
       const ironPortPolicy = (policy.ironPortPolicy || "").trim();
       const threatVerdict = (policy.threatScannerVerdict || "").trim();
+      const grayMailDetected = Boolean(policy.grayMailDetected);
+      const proxyWrappedUrlFound = Boolean(policy.proxyWrappedUrlFound);
 
-      if (ironPortPolicy || threatVerdict) {
+      if (ironPortPolicy || threatVerdict || grayMailDetected || proxyWrappedUrlFound) {
         if (/accepted/i.test(ironPortPolicy) && /negative/i.test(threatVerdict)) {
           lines.push("IronPort accepted the message because mail flow policy is Accepted and threat scanner verdict is Negative.");
         } else {
@@ -912,6 +981,12 @@ If Python is not installed on this machine:
             "IronPort signals: MailFlowPolicy=" + (ironPortPolicy || "not present") +
             ", ThreatScannerVerdict=" + (threatVerdict || "not present") + "."
           );
+        }
+        if (grayMailDetected) {
+          lines.push("IronPort GrayMail signal detected (bulk/marketing-style classification). Review sender trust and user expectations.");
+        }
+        if (proxyWrappedUrlFound) {
+          lines.push("ProxyWrapped URL indicator detected in headers (URL rewriting/protection was applied). Review rewritten links if investigating user-click risk.");
         }
       }
 
@@ -991,15 +1066,95 @@ If Python is not installed on this machine:
       return parts.length === 2 ? parts[1].toLowerCase() : "";
     }
 
+    function authMeaning(kind, value) {
+      const v = (value || "unknown").toLowerCase();
+      const table = {
+        spf: {
+          fail: "sender IP is not authorized in SPF.",
+          softfail: "sender is probably unauthorized; treat with caution.",
+          neutral: "sender domain did not assert pass or fail.",
+          none: "no SPF record was found for the domain.",
+          temperror: "temporary DNS/SPF lookup problem.",
+          permerror: "permanent SPF record syntax/evaluation error.",
+          unknown: "no SPF result found in parsed headers."
+        },
+        dkim: {
+          fail: "signature check failed or message may have changed.",
+          none: "message was not DKIM signed.",
+          temperror: "temporary DKIM lookup/validation problem.",
+          permerror: "permanent DKIM record/signature problem.",
+          unknown: "no DKIM result found in parsed headers."
+        },
+        dmarc: {
+          fail: "domain alignment/authentication failed policy checks.",
+          bestguesspass: "no DMARC policy found, but message looked aligned.",
+          none: "no DMARC policy was found for the domain.",
+          temperror: "temporary DMARC lookup/processing issue.",
+          permerror: "permanent DMARC record syntax/evaluation issue.",
+          unknown: "no DMARC result found in parsed headers."
+        },
+        compauth: {
+          fail: "Microsoft composite authentication failed.",
+          softpass: "partially trusted based on indirect signals.",
+          none: "composite auth not evaluated or bypassed.",
+          unknown: "no composite auth result found in parsed headers."
+        }
+      };
+      return (table[kind] && table[kind][v]) || "non-pass result requires review.";
+    }
+
+    function sfvMeaning(value) {
+      const v = (value || "").toUpperCase();
+      const map = {
+        NSPM: "message was marked non-spam.",
+        SPM: "message was marked spam by filtering.",
+        SFE: "filtering was skipped and allowed due to Safe Senders.",
+        SKA: "allowed due to tenant allow-list/policy.",
+        SKB: "blocked due to tenant block-list/policy.",
+        SKN: "set non-spam before filtering (often SCL -1 bypass).",
+        SKQ: "released from quarantine and delivered.",
+        SKS: "set spam before filtering (often by mail flow rule).",
+        BLK: "blocked due to user's Blocked Senders list."
+      };
+      return map[v] || "vendor-specific spam filter verdict value.";
+    }
+
+    function catMeaning(value) {
+      const v = (value || "").toUpperCase();
+      const map = {
+        NONE: "no threat category assigned.",
+        HSPM: "high-confidence spam.",
+        SPM: "spam classification.",
+        BULK: "bulk/gray-mail classification.",
+        HPHSH: "high-confidence phishing.",
+        HPHISH: "high-confidence phishing.",
+        PHSH: "phishing classification.",
+        MALW: "malware classification.",
+        BIMP: "brand impersonation signal.",
+        DIMP: "domain impersonation signal.",
+        GIMP: "mailbox intelligence impersonation signal.",
+        INTOS: "intra-organization phishing signal.",
+        OSPM: "outbound spam classification.",
+        AMP: "anti-malware policy trigger.",
+        FTBP: "blocked by anti-malware common attachment filtering."
+      };
+      return map[v] || "vendor-specific category value.";
+    }
+
     function evaluateFindings(auth, envelope, hops, policySignals) {
       const notes = [];
 
-      if ([auth.spf, auth.dkim, auth.dmarc].includes("fail")) {
-        notes.push("At least one authentication mechanism failed (SPF, DKIM, or DMARC). Investigate sender legitimacy.");
-      }
-
-      if (auth.dmarc === "unknown") {
-        notes.push("DMARC result not detected in headers.");
+      const authChecks = [
+        ["SPF", "spf", auth.spf],
+        ["DKIM", "dkim", auth.dkim],
+        ["DMARC", "dmarc", auth.dmarc],
+        ["CompAuth", "compauth", auth.compauth]
+      ];
+      for (const [label, key, valueRaw] of authChecks) {
+        const value = (valueRaw || "unknown").toLowerCase();
+        if (value !== "pass") {
+          notes.push(label + " result: " + value + " - " + authMeaning(key, value));
+        }
       }
 
       const fromDomain = getDomain(envelope.from);
@@ -1008,8 +1163,8 @@ If Python is not installed on this machine:
         notes.push("From and Reply-To domains do not match. This can indicate impersonation patterns.");
       }
 
-      if (hops.length > 8) {
-        notes.push("Header contains an unusually long Received chain.");
+      if (hops.length > 12) {
+        notes.push("Header contains an unusually long Received chain (" + hops.length + " hops).");
       }
 
       if (!hops.length) {
@@ -1030,12 +1185,34 @@ If Python is not installed on this machine:
         notes.push("Bulk signal detected: BCL " + bcl + " indicates bulk/gray-mail characteristics.");
       }
 
-      if (["SPM", "SKS", "SKB"].includes(sfv)) {
-        notes.push("Spam verdict detected in SFV: " + sfv + ".");
+      const pcl = parseInt(forefront.pcl, 10);
+      if (!Number.isNaN(pcl) && pcl >= 3) {
+        notes.push("Phish signal detected: PCL " + pcl + " indicates increased phishing confidence.");
       }
 
-      if (["HSPM", "SPM", "BULK", "HPHSH", "HPHISH", "PHSH", "MALW"].includes(cat)) {
-        notes.push("Threat category detected in CAT: " + cat + ".");
+      if (sfv && sfv !== "NSPM") {
+        notes.push("Spam verdict detected in SFV: " + sfv + " - " + sfvMeaning(sfv));
+      }
+
+      if (cat && cat !== "NONE") {
+        notes.push("Threat category detected in CAT: " + cat + " - " + catMeaning(cat));
+      }
+
+      const ironPortPolicy = (policySignals && policySignals.ironPortPolicy ? policySignals.ironPortPolicy : "").trim();
+      const threatVerdict = (policySignals && policySignals.threatScannerVerdict ? policySignals.threatScannerVerdict : "").trim();
+      const grayMailDetected = Boolean(policySignals && policySignals.grayMailDetected);
+      const proxyWrappedUrlFound = Boolean(policySignals && policySignals.proxyWrappedUrlFound);
+      if (ironPortPolicy && classifyIronPortPolicy(ironPortPolicy) !== "ok") {
+        notes.push("MailFlowPolicy result: " + ironPortPolicy + " - policy outcome needs review.");
+      }
+      if (threatVerdict && classifyThreatScannerVerdict(threatVerdict) !== "ok") {
+        notes.push("ThreatScannerVerdict result: " + threatVerdict + " - scanner did not return a clean/negative verdict.");
+      }
+      if (grayMailDetected) {
+        notes.push("IronPort GrayMail indicator detected - message may be bulk/marketing style mail.");
+      }
+      if (proxyWrappedUrlFound) {
+        notes.push("ProxyWrapped URL indicator detected - links appear to have been rewritten by security controls.");
       }
 
       const slowHops = hops.filter(function (hop) {
@@ -1049,7 +1226,7 @@ If Python is not installed on this machine:
       }
 
       if (!notes.length) {
-        notes.push("No obvious red flags detected from high-level checks. Continue with full content and URL analysis.");
+        notes.push("No obvious red flags detected from high-level checks.");
       }
 
       return notes;
@@ -1180,15 +1357,11 @@ If Python is not installed on this machine:
     }
 
     function sfvHelpText(current) {
-      const value = (current || "").toUpperCase();
-      const currentText = value ? ("Current: " + value + ". ") : "";
-      return currentText + "SFV options: NSPM = non-spam, SPM = marked spam, SFE = skipped and allowed due to Safe Senders, SKA = allowed due to tenant allow list/policy, SKB = blocked due to tenant block list/policy, SKN = non-spam set before filtering (often SCL -1 bypass), SKQ = released from quarantine, SKS = spam set before filtering (often via rule), BLK = skipped and blocked due to user Blocked Senders.";
+      return "SFV = Spam Filtering Verdict. Options: NSPM = non-spam, SPM = marked spam, SFE = skipped and allowed due to Safe Senders, SKA = allowed due to tenant allow list/policy, SKB = blocked due to tenant block list/policy, SKN = non-spam set before filtering (often SCL -1 bypass), SKQ = released from quarantine, SKS = spam set before filtering (often via rule), BLK = skipped and blocked due to user Blocked Senders.";
     }
 
     function catHelpText(current) {
-      const value = (current || "").toUpperCase();
-      const currentText = value ? ("Current: " + value + ". ") : "";
-      return currentText + "CAT options: NONE = no category, HSPM = high-confidence spam, SPM = spam, BULK = bulk/gray mail, HPHSH/HPHISH = high-confidence phishing, PHSH = phishing, MALW = malware, BIMP = brand impersonation, DIMP = domain impersonation, GIMP = mailbox intelligence impersonation, INTOS = intra-org phishing, OSPM = outbound spam, AMP/FTBP = malware policy triggers.";
+      return "CAT = Category (threat policy category). Options: NONE = no category, HSPM = high-confidence spam, SPM = spam, BULK = bulk/gray mail, HPHSH/HPHISH = high-confidence phishing, PHSH = phishing, MALW = malware, BIMP = brand impersonation, DIMP = domain impersonation, GIMP = mailbox intelligence impersonation, INTOS = intra-org phishing, OSPM = outbound spam, AMP/FTBP = malware policy triggers.";
     }
 
     function hopDelayTone(delayMs) {
@@ -1204,6 +1377,20 @@ If Python is not installed on this machine:
       return "";
     }
 
+    function mostSevereDelayTone(hops) {
+      let tone = "";
+      for (const hop of hops || []) {
+        const currentTone = hopDelayTone(hop.delayMs);
+        if (currentTone === "bad") {
+          return "bad";
+        }
+        if (currentTone === "warn") {
+          tone = "warn";
+        }
+      }
+      return tone;
+    }
+
     function classifyHostLabel(text) {
       const source = (text || "").toLowerCase();
       if (!source) {
@@ -1211,6 +1398,9 @@ If Python is not installed on this machine:
       }
       if (source.includes("iphmx.com")) {
         return "IronPort Device";
+      }
+      if (source.includes("cisco.com")) {
+        return "Cisco (Vendor)";
       }
       if (source.includes("service-now.com")) {
         return "Service Now";
@@ -1221,7 +1411,7 @@ If Python is not installed on this machine:
       if (source.includes("proofpoint") || source.includes("pphosted") || source.includes("pps")) {
         return "Proofpoint";
       }
-      if (source.includes("ironport") || source.includes("cisco")) {
+      if (source.includes("ironport")) {
         return "Deloitte IronPort";
       }
       if (source.includes("protection.outlook.com") || source.includes("outlook.com")) {
@@ -1255,6 +1445,10 @@ If Python is not installed on this machine:
       return compact;
     }
 
+    function routeStepForHop(hop) {
+      return classifyHostLabel(hop.from) + " -> " + classifyHostLabel(hop.by);
+    }
+
     function renderRouteStory(routeNodes) {
       const pivot = routeNodes.findIndex(function (node) {
         return node === "IronPort Device";
@@ -1267,10 +1461,6 @@ If Python is not installed on this machine:
         }
         return safeNode;
       }).join(" -> ");
-    }
-
-    function routeStepForHop(hop) {
-      return classifyHostLabel(hop.from) + " -> " + classifyHostLabel(hop.by);
     }
 
     function renderPill(container, text, tone, hint) {
@@ -1293,6 +1483,30 @@ If Python is not installed on this machine:
       }
     }
 
+    async function copyClipboardPayload(plainText, htmlText) {
+      try {
+        if (htmlText && window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+          const item = new ClipboardItem({
+            "text/plain": new Blob([plainText || ""], { type: "text/plain" }),
+            "text/html": new Blob([htmlText], { type: "text/html" })
+          });
+          await navigator.clipboard.write([item]);
+          return true;
+        }
+      } catch (error) {
+      }
+      return copyToClipboard(plainText);
+    }
+
+    function setButtonFeedback(button, successText, fallbackText) {
+      const original = button.dataset.originalText || button.textContent;
+      button.dataset.originalText = original;
+      button.textContent = successText || fallbackText;
+      setTimeout(function () {
+        button.textContent = original;
+      }, 900);
+    }
+
     function renderActionPill(container, text, tone, action) {
       const item = document.createElement("button");
       item.type = "button";
@@ -1311,11 +1525,7 @@ If Python is not installed on this machine:
 
         if (action.type === "copy") {
           const copied = await copyToClipboard(action.value || "");
-          const original = item.textContent;
-          item.textContent = copied ? "Copied" : "Copy failed";
-          setTimeout(function () {
-            item.textContent = original;
-          }, 900);
+          setButtonFeedback(item, copied ? "Copied" : "Copy failed", "Copy failed");
           return;
         }
 
@@ -1349,6 +1559,263 @@ If Python is not installed on this machine:
       const head = Math.floor((maxLen - 3) * 0.56);
       const tail = Math.floor((maxLen - 3) * 0.44);
       return messageId.slice(0, head) + "..." + messageId.slice(-tail);
+    }
+
+    function formatGmtOffset(dateValue) {
+      const totalMinutes = -dateValue.getTimezoneOffset();
+      const sign = totalMinutes >= 0 ? "+" : "-";
+      const absoluteMinutes = Math.abs(totalMinutes);
+      const hours = String(Math.floor(absoluteMinutes / 60)).padStart(2, "0");
+      const minutes = String(absoluteMinutes % 60).padStart(2, "0");
+      return "GMT" + sign + hours + ":" + minutes;
+    }
+
+    function parseHeaderUtcOffsetMinutes(headerDate) {
+      if (!headerDate) {
+        return null;
+      }
+
+      const match = headerDate.match(/([+-])(\d{2})(\d{2})\s*$/);
+      if (!match) {
+        return null;
+      }
+
+      const sign = match[1] === "+" ? 1 : -1;
+      const hours = parseInt(match[2], 10);
+      const minutes = parseInt(match[3], 10);
+      return sign * ((hours * 60) + minutes);
+    }
+
+    function formatDateForZone(dateValue, timeZone) {
+      return new Intl.DateTimeFormat(undefined, {
+        timeZone: timeZone,
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: true,
+        timeZoneName: timeZone === "UTC" ? undefined : "short"
+      }).format(dateValue);
+    }
+
+    function formatLocalDateRecap(headerDate) {
+      if (!headerDate) {
+        return "";
+      }
+      const parsedDate = new Date(headerDate);
+      if (Number.isNaN(parsedDate.getTime())) {
+        return "";
+      }
+
+      const originalOffsetMinutes = parseHeaderUtcOffsetMinutes(headerDate);
+      const localOffsetMinutes = -parsedDate.getTimezoneOffset();
+      const localText = formatDateForZone(parsedDate);
+      const gmtText = formatDateForZone(parsedDate, "UTC") + " GMT";
+
+      if (originalOffsetMinutes !== null && originalOffsetMinutes === localOffsetMinutes) {
+        return "translated to " + gmtText;
+      }
+
+      return "translated to local time of " + localText + " or " + gmtText;
+    }
+
+    function createCopyIconButton(label, value) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "copy-icon-btn";
+      btn.textContent = "⧉";
+      btn.title = "Copy " + label;
+      btn.addEventListener("click", async function () {
+        const copied = await copyToClipboard(value || "");
+        const original = btn.textContent;
+        btn.textContent = copied ? "✓" : "!";
+        setTimeout(function () {
+          btn.textContent = original;
+        }, 850);
+      });
+      return btn;
+    }
+
+    function formatPlainResultsReport(parsed) {
+      const lines = [];
+      lines.push("Email Header Analyzer Results");
+      lines.push("");
+      lines.push("Key Header Values");
+      const detailRows = [
+        ["From", parsed.envelope.from],
+        ["To", parsed.envelope.to],
+        ["Subject", parsed.envelope.subject],
+        ["Date", parsed.envelope.date],
+        ["Message-ID", parsed.envelope.messageId],
+        ["Return-Path", parsed.envelope.returnPath],
+        ["Reply-To", parsed.envelope.replyTo]
+      ];
+      for (const [label, value] of detailRows) {
+        lines.push(label + ": " + (value || "n/a"));
+      }
+      lines.push("");
+      lines.push("Potential Findings");
+      for (const finding of parsed.findings) {
+        lines.push("- " + finding);
+      }
+      lines.push("");
+      lines.push("Routing");
+      lines.push("Hops: " + parsed.hops.length);
+      lines.push("End-to-End: " + formatDuration(parsed.totalTransitMs));
+      lines.push("SPF: " + parsed.auth.spf);
+      lines.push("DKIM: " + parsed.auth.dkim);
+      lines.push("DMARC: " + parsed.auth.dmarc);
+      lines.push("CompAuth: " + parsed.auth.compauth + (parsed.auth.compauthReason ? " (Reason " + parsed.auth.compauthReason + ")" : ""));
+      const ms = parsed.policySignals.forefront;
+      if (ms.scl) {
+        lines.push("SCL: " + ms.scl);
+      }
+      if (ms.bcl) {
+        lines.push("BCL: " + ms.bcl);
+      }
+      if (ms.pcl) {
+        lines.push("PCL: " + ms.pcl);
+      }
+      if (ms.sfv) {
+        lines.push("SFV: " + ms.sfv);
+      }
+      if (ms.cat) {
+        lines.push("CAT: " + ms.cat);
+      }
+      if (parsed.policySignals.ironPortPolicy) {
+        lines.push("MailFlowPolicy: " + parsed.policySignals.ironPortPolicy);
+      }
+      if (parsed.policySignals.threatScannerVerdict) {
+        lines.push("ThreatScannerVerdict: " + parsed.policySignals.threatScannerVerdict);
+      }
+      lines.push("Route: " + buildRouteStory(parsed.hops).join(" -> "));
+      return lines.join("\n");
+    }
+
+    function formatPlainFindingsReport(parsed) {
+      const lines = ["Potential Findings", ""];
+      for (const finding of parsed.findings) {
+        lines.push("- " + finding);
+      }
+      return lines.join("\n");
+    }
+
+    function exportToneColors(tone) {
+      const tones = {
+        ok: { bg: "#dff6ea", border: "#b5e3ca", text: "#0f5132" },
+        warn: { bg: "#fff3dc", border: "#ffde9c", text: "#6a4104" },
+        bad: { bg: "#fee4e2", border: "#f7b5b1", text: "#7f1d1d" },
+        phish: { bg: "#ffedd5", border: "#fdba74", text: "#7a3412" },
+        muted: { bg: "#e7f0f8", border: "#bfd2e2", text: "#35506b" }
+      };
+      return tones[tone] || tones.muted;
+    }
+
+    function exportPillHtml(text, tone) {
+      const colors = exportToneColors(tone);
+      return "<span style=\"display:inline-block;margin:0 8px 8px 0;padding:6px 10px;border-radius:999px;border:1px solid " + colors.border + ";background:" + colors.bg + ";color:" + colors.text + ";font-size:12px;font-weight:700;line-height:1.25;\">" + escapeHtml(text) + "</span>";
+    }
+
+    function exportSectionHtml(title, bodyHtml) {
+      return "<div style=\"margin:0 0 14px;padding:14px 16px;border:1px solid #d8e3ee;border-radius:14px;background:#f8fbfe;\">" +
+        "<h3 style=\"margin:0 0 10px;color:#12344d;font-size:16px;\">" + escapeHtml(title) + "</h3>" +
+        bodyHtml +
+        "</div>";
+    }
+
+    function formatHtmlResultsReport(parsed) {
+      const detailRows = [
+        ["From", parsed.envelope.from],
+        ["To", parsed.envelope.to],
+        ["Subject", parsed.envelope.subject],
+        ["Date", parsed.envelope.date],
+        ["Message-ID", parsed.envelope.messageId],
+        ["Return-Path", parsed.envelope.returnPath],
+        ["Reply-To", parsed.envelope.replyTo],
+        ["X-Originating-IP", parsed.envelope.xOriginatingIp]
+      ];
+      const ms = parsed.policySignals.forefront;
+      const authPills = [
+        exportPillHtml("Hops: " + parsed.hops.length, parsed.hops.length ? "ok" : "warn"),
+        exportPillHtml("End-to-End: " + formatDuration(parsed.totalTransitMs), parsed.totalTransitMs ? "ok" : "warn"),
+        exportPillHtml("SPF: " + parsed.auth.spf, classifyResult(parsed.auth.spf)),
+        exportPillHtml("DKIM: " + parsed.auth.dkim, classifyResult(parsed.auth.dkim)),
+        exportPillHtml("DMARC: " + parsed.auth.dmarc, classifyResult(parsed.auth.dmarc)),
+        exportPillHtml("CompAuth: " + parsed.auth.compauth + (parsed.auth.compauthReason ? " (Reason " + parsed.auth.compauthReason + ")" : ""), classifyResult(parsed.auth.compauth)),
+        exportPillHtml("Routing Hops: " + parsed.hops.length, parsed.hops.length ? "ok" : "warn"),
+        exportPillHtml("End-to-End: " + formatDuration(parsed.totalTransitMs), parsed.totalTransitMs ? "ok" : "warn")
+      ].join("");
+
+      const microsoftPills = [
+        ms.scl ? exportPillHtml("SCL: " + ms.scl, classifyScl(ms.scl)) : "",
+        ms.bcl ? exportPillHtml("BCL: " + ms.bcl, classifyBcl(ms.bcl)) : "",
+        ms.pcl ? exportPillHtml("PCL: " + ms.pcl, classifyPcl(ms.pcl)) : "",
+        ms.sfv ? exportPillHtml("SFV: " + ms.sfv, classifySfv(ms.sfv)) : "",
+        ms.cat ? exportPillHtml("CAT: " + ms.cat, classifyCat(ms.cat)) : ""
+      ].join("");
+
+      const ironPortPills = [
+        parsed.policySignals.ironPortPolicy ? exportPillHtml("MailFlowPolicy: " + parsed.policySignals.ironPortPolicy, classifyIronPortPolicy(parsed.policySignals.ironPortPolicy)) : "",
+        parsed.policySignals.threatScannerVerdict ? exportPillHtml("ThreatScannerVerdict: " + parsed.policySignals.threatScannerVerdict, classifyThreatScannerVerdict(parsed.policySignals.threatScannerVerdict)) : "",
+        exportPillHtml("GrayMail: " + (parsed.policySignals.grayMailDetected ? "Detected" : "Not Detected"), parsed.policySignals.grayMailDetected ? "warn" : "ok"),
+        exportPillHtml("ProxyWrapped URL: " + (parsed.policySignals.proxyWrappedUrlFound ? "Found" : "Not Found"), parsed.policySignals.proxyWrappedUrlFound ? "warn" : "ok")
+      ].join("");
+
+      const detailTable = "<table style=\"border-collapse:collapse;width:100%;max-width:900px;\">" +
+        detailRows.map(function (row) {
+          return "<tr><td style=\"padding:4px 10px 4px 0;font-weight:700;vertical-align:top;white-space:nowrap;color:#486581;\">" + escapeHtml(row[0]) + "</td><td style=\"padding:4px 0;color:#102a43;\">" + escapeHtml(row[1] || "n/a") + "</td></tr>";
+        }).join("") +
+        "</table>";
+
+      const findingsList = "<ul style=\"margin:0 0 0 18px;padding:0;color:#102a43;\">" +
+        parsed.findings.map(function (finding) {
+          return "<li style=\"margin:0 0 6px;\">" + escapeHtml(finding) + "</li>";
+        }).join("") +
+        "</ul>";
+
+      const routingHtml =
+        "<div style=\"margin:0 0 8px;\">" + authPills + "</div>" +
+        (microsoftPills ? "<div style=\"margin:8px 0 0;\"><div style=\"margin:0 0 6px;font-size:12px;font-weight:700;color:#486581;text-transform:uppercase;letter-spacing:0.4px;\">Microsoft Threat Signals</div>" + microsoftPills + "</div>" : "") +
+        (ironPortPills ? "<div style=\"margin:8px 0 0;\"><div style=\"margin:0 0 6px;font-size:12px;font-weight:700;color:#486581;text-transform:uppercase;letter-spacing:0.4px;\">IronPort Signals</div>" + ironPortPills + "</div>" : "") +
+        "<div style=\"margin:12px 0 0;padding:10px 12px;border:1px solid #d8e3ee;border-radius:10px;background:#ffffff;color:#102a43;\"><strong>Route:</strong> " + escapeHtml(buildRouteStory(parsed.hops).join(" -> ")) + "</div>";
+
+      return "<div style=\"font-family:Segoe UI,Aptos,Tahoma,sans-serif;color:#102a43;line-height:1.45;background:#eef4f8;padding:18px;border-radius:16px;\">" +
+        "<h2 style=\"margin:0 0 14px;color:#12344d;font-size:22px;\">Email Header Analyzer Results</h2>" +
+        exportSectionHtml("Key Header Values", detailTable) +
+        exportSectionHtml("Potential Findings", findingsList) +
+        exportSectionHtml("Routing", routingHtml) +
+        "</div>";
+    }
+
+    async function copyResultsReport() {
+      if (!currentParsed) {
+        setButtonFeedback(ui.copyResultsBtn, "No Results", "No Results");
+        return;
+      }
+      const plainText = formatPlainResultsReport(currentParsed);
+      const htmlText = formatHtmlResultsReport(currentParsed);
+      const copied = await copyClipboardPayload(plainText, htmlText);
+      setButtonFeedback(ui.copyResultsBtn, copied ? "Copied" : "Copy failed", "Copy failed");
+    }
+
+    async function copyFindingsReport() {
+      if (!currentParsed) {
+        setButtonFeedback(ui.copyFindingsBtn, "No Findings", "No Findings");
+        return;
+      }
+
+      const plainText = formatPlainFindingsReport(currentParsed);
+      const htmlText = "<div style=\"font-family:Segoe UI,Aptos,Tahoma,sans-serif;color:#102a43;line-height:1.45;\">" +
+        "<h3 style=\"margin:0 0 10px;color:#12344d;font-size:16px;\">Potential Findings</h3>" +
+        "<ul style=\"margin:0 0 0 18px;padding:0;\">" +
+        currentParsed.findings.map(function (finding) {
+          return "<li style=\"margin:0 0 6px;\">" + escapeHtml(finding) + "</li>";
+        }).join("") +
+        "</ul></div>";
+      const copied = await copyClipboardPayload(plainText, htmlText);
+      setButtonFeedback(ui.copyFindingsBtn, copied ? "Copied" : "Copy failed", "Copy failed");
     }
 
     function resetHeaderListExpansion() {
@@ -1449,6 +1916,8 @@ If Python is not installed on this machine:
       resetHeaderListExpansion();
       resetHopChainExpansion();
 
+      const delaySeverityTone = mostSevereDelayTone(parsed.hops);
+
       renderActionPill(
         ui.routingPills,
         "Hops: " + parsed.hops.length,
@@ -1463,10 +1932,12 @@ If Python is not installed on this machine:
       renderActionPill(
         ui.routingPills,
         "End-to-End: " + formatDuration(parsed.totalTransitMs),
-        parsed.totalTransitMs ? "ok" : "warn",
+        delaySeverityTone || (parsed.totalTransitMs ? "ok" : "warn"),
         {
           type: "jumpHeader",
-          hint: "Jump to Received headers in full readout.",
+          hint: delaySeverityTone
+            ? "End-to-end timing color reflects delayed hop highlighting in the Received chain. Click to review delayed hop rows."
+            : "Jump to Received headers in full readout.",
           headerKeys: ["received"],
           fallbackId: "routingSection"
         }
@@ -1474,19 +1945,19 @@ If Python is not installed on this machine:
 
       renderActionPill(ui.authPills, "SPF: " + parsed.auth.spf, classifyResult(parsed.auth.spf), {
         type: "jumpHeader",
-        hint: "SPF: pass = sender identity validated; fail = high suspicion; softfail = investigate; none = common, but worth investigating. Click to jump to Authentication-Results.",
+        hint: "SPF = Sender Policy Framework. pass = sender identity validated; fail = high suspicion; softfail = investigate; none = common, but worth investigating. Click to jump to Authentication-Results.",
         headerKeys: ["authentication-results", "auth-results", "received-spf"],
         fallbackId: "spamSection"
       });
       renderActionPill(ui.authPills, "DKIM: " + parsed.auth.dkim, classifyResult(parsed.auth.dkim), {
         type: "jumpHeader",
-        hint: "DKIM: pass = signature validated; fail = mismatch or potential tampering; none = unsigned. Click to jump to Authentication-Results.",
+        hint: "DKIM = DomainKeys Identified Mail. pass = signature validated; fail = mismatch or potential tampering; none = unsigned. Click to jump to Authentication-Results.",
         headerKeys: ["authentication-results", "auth-results", "dkim-signature"],
         fallbackId: "spamSection"
       });
       renderActionPill(ui.authPills, "DMARC: " + parsed.auth.dmarc, classifyResult(parsed.auth.dmarc), {
         type: "jumpHeader",
-        hint: "DMARC: pass = aligned sender identity; fail = policy/auth alignment failed. Click to jump to Authentication-Results.",
+        hint: "DMARC = Domain-based Message Authentication, Reporting, and Conformance. pass = aligned sender identity; fail = policy/auth alignment failed. Click to jump to Authentication-Results.",
         headerKeys: ["authentication-results", "auth-results"],
         fallbackId: "spamSection"
       });
@@ -1496,7 +1967,7 @@ If Python is not installed on this machine:
         classifyResult(parsed.auth.compauth),
         {
           type: "jumpHeader",
-          hint: "Composite Authentication (Microsoft): pass indicates overall identity confidence; fail indicates elevated suspicion. Click to jump to Authentication-Results.",
+          hint: "CompAuth = Composite Authentication (Microsoft). pass indicates overall identity confidence; fail indicates elevated suspicion. Click to jump to Authentication-Results.",
           headerKeys: ["authentication-results", "auth-results"],
           fallbackId: "spamSection"
         }
@@ -1504,6 +1975,7 @@ If Python is not installed on this machine:
 
       const iron = parsed.policySignals;
       let ironCount = 0;
+      const hasIronContext = Boolean(iron.hasIronPortContext || iron.ironPortPolicy || iron.threatScannerVerdict || iron.grayMailDetected || iron.proxyWrappedUrlFound);
       if (iron.ironPortPolicy) {
         ironCount += 1;
         renderActionPill(
@@ -1532,6 +2004,34 @@ If Python is not installed on this machine:
           }
         );
       }
+      if (iron.grayMailDetected) {
+        ironCount += 1;
+        renderActionPill(
+          ui.ironPortPills,
+          "GrayMail: " + (iron.grayMailValue || "Detected"),
+          "warn",
+          {
+            type: "jumpHeader",
+            hint: "X-IronPort-Gray (for example, value Gray) indicates GrayMail/bulk-style classification, often newsletters or promotional campaigns. Click to jump to matching headers.",
+            headerKeys: (iron.grayMailHeaderKeys && iron.grayMailHeaderKeys.length) ? iron.grayMailHeaderKeys : ["x-ironport-gray", "x-ironport-mailflowpolicy"],
+            fallbackId: "spamSection"
+          }
+        );
+      }
+      if (hasIronContext) {
+        ironCount += 1;
+        renderActionPill(
+          ui.ironPortPills,
+          "ProxyWrapped URL: " + (iron.proxyWrappedUrlFound ? "Found" : "Not Found"),
+          iron.proxyWrappedUrlFound ? "warn" : "ok",
+          {
+            type: "jumpHeader",
+            hint: "ProxyWrapped URL indicates URL rewriting/protection was applied (common in secure email gateways and click-protection workflows).",
+            headerKeys: (iron.proxyWrappedHeaderKeys && iron.proxyWrappedHeaderKeys.length) ? iron.proxyWrappedHeaderKeys : ["x-ironport-mailflowpolicy", "x-threatscannerverdict"],
+            fallbackId: "spamSection"
+          }
+        );
+      }
       ui.ironPortSectionBlock.style.display = ironCount ? "block" : "none";
 
       const ms = parsed.policySignals.forefront;
@@ -1540,7 +2040,7 @@ If Python is not installed on this machine:
         msCount += 1;
         renderActionPill(ui.microsoftPills, "SCL: " + ms.scl, classifyScl(ms.scl), {
           type: "jumpHeader",
-          hint: "SCL scale (Microsoft): -1 bypass/skip spam filtering; 0-1 non-spam; 5-6 spam; 7-9 high-confidence spam (2-4 are generally not stamped by spam filtering). Click to jump to related header.",
+          hint: "SCL = Spam Confidence Level. Scale (Microsoft): -1 bypass/skip spam filtering; 0-1 non-spam; 5-6 spam; 7-9 high-confidence spam (2-4 are generally not stamped by spam filtering). Click to jump to related header.",
           headerKeys: ["x-ms-exchange-organization-scl", "x-forefront-antispam-report"],
           fallbackId: "spamSection"
         });
@@ -1549,7 +2049,7 @@ If Python is not installed on this machine:
         msCount += 1;
         renderActionPill(ui.microsoftPills, "BCL: " + ms.bcl, classifyBcl(ms.bcl), {
           type: "jumpHeader",
-          hint: "BCL scale (Microsoft): 0 = not bulk, 1-3 = low-complaint bulk sender, 4-7 = mixed-complaint bulk sender, 8-9 = high-complaint bulk sender. Click to jump to related header.",
+          hint: "BCL = Bulk Complaint Level. Scale (Microsoft): 0 = not bulk, 1-3 = low-complaint bulk sender, 4-7 = mixed-complaint bulk sender, 8-9 = high-complaint bulk sender. Click to jump to related header.",
           headerKeys: ["x-ms-exchange-organization-bcl", "x-microsoft-antispam-bcl", "x-forefront-antispam-report"],
           fallbackId: "spamSection"
         });
@@ -1558,7 +2058,7 @@ If Python is not installed on this machine:
         msCount += 1;
         renderActionPill(ui.microsoftPills, "Phish Score (PCL): " + ms.pcl, classifyPcl(ms.pcl), {
           type: "jumpHeader",
-          hint: "PCL indicates phishing confidence. Higher values indicate stronger phishing likelihood. Click to jump to related header.",
+          hint: "PCL = Phishing Confidence Level. Higher values indicate stronger phishing likelihood. Click to jump to related header.",
           headerKeys: ["x-ms-exchange-organization-pcl", "x-microsoft-antispam-pcl", "x-forefront-antispam-report"],
           fallbackId: "spamSection"
         });
@@ -1597,8 +2097,7 @@ If Python is not installed on this machine:
         ["Date", parsed.envelope.date],
         ["Message-ID", parsed.envelope.messageId],
         ["Return-Path", parsed.envelope.returnPath],
-        ["Reply-To", parsed.envelope.replyTo],
-        ["X-Originating-IP", parsed.envelope.xOriginatingIp]
+        ["Reply-To", parsed.envelope.replyTo]
       ];
 
       for (const [label, value] of detailRows) {
@@ -1613,22 +2112,11 @@ If Python is not installed on this machine:
           const valueSpan = document.createElement("span");
           valueSpan.textContent = value || "n/a";
           wrap.appendChild(valueSpan);
-
-          const btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = "copy-icon-btn";
-          btn.textContent = "⧉";
-          btn.title = "Copy Message-ID";
-          btn.addEventListener("click", async function () {
-            const copied = await copyToClipboard(value || "");
-            const original = btn.textContent;
-            btn.textContent = copied ? "✓" : "!";
-            setTimeout(function () {
-              btn.textContent = original;
-            }, 850);
-          });
-          wrap.appendChild(btn);
+          wrap.appendChild(createCopyIconButton(label, value || ""));
           dd.appendChild(wrap);
+        } else if (label === "Date") {
+          const recap = formatLocalDateRecap(value);
+          dd.textContent = value ? (recap ? value + " (" + recap + ")" : value) : "n/a";
         } else {
           dd.textContent = value || "n/a";
         }
@@ -1703,14 +2191,17 @@ If Python is not installed on this machine:
       }
 
       const parsed = parseHeaders(raw);
+      currentParsed = parsed;
       renderSummary(parsed);
       ui.resultsShell.classList.remove("is-hidden");
+      ui.scrollTopBtn.classList.remove("is-hidden");
       requestAnimationFrame(function () {
         ui.resultsShell.scrollIntoView({ behavior: "smooth", block: "start" });
       });
     }
 
     function clearAll() {
+      currentParsed = null;
       ui.input.value = "";
       ui.routingPills.innerHTML = "";
       ui.authPills.innerHTML = "";
@@ -1727,6 +2218,7 @@ If Python is not installed on this machine:
       resetHeaderListExpansion();
       resetHopChainExpansion();
       ui.resultsShell.classList.add("is-hidden");
+      ui.scrollTopBtn.classList.add("is-hidden");
       ui.input.focus();
     }
 
@@ -1735,6 +2227,11 @@ If Python is not installed on this machine:
     ui.sampleBtn.addEventListener("click", function () {
       ui.input.value = SAMPLE_HEADERS;
       analyze();
+    });
+    ui.copyResultsBtn.addEventListener("click", copyResultsReport);
+    ui.copyFindingsBtn.addEventListener("click", copyFindingsReport);
+    ui.scrollTopBtn.addEventListener("click", function () {
+      document.querySelector(".hero").scrollIntoView({ behavior: "smooth", block: "start" });
     });
     ui.toggleSpamHeaders.addEventListener("click", function () {
       toggleHeaderList(ui.spamHeaders, ui.toggleSpamHeaders);
