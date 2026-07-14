@@ -1355,13 +1355,13 @@ If Python is not installed on this machine:
     function sfvHelpText(current) {
       const value = (current || "").toUpperCase();
       const currentText = value ? ("Current: " + value + ". ") : "";
-      return currentText + "SFV options: NSPM = non-spam, SPM = marked spam, SFE = skipped and allowed due to Safe Senders, SKA = allowed due to tenant allow list/policy, SKB = blocked due to tenant block list/policy, SKN = non-spam set before filtering (often SCL -1 bypass), SKQ = released from quarantine, SKS = spam set before filtering (often via rule), BLK = skipped and blocked due to user Blocked Senders.";
+      return currentText + "SFV = Spam Filtering Verdict. Options: NSPM = non-spam, SPM = marked spam, SFE = skipped and allowed due to Safe Senders, SKA = allowed due to tenant allow list/policy, SKB = blocked due to tenant block list/policy, SKN = non-spam set before filtering (often SCL -1 bypass), SKQ = released from quarantine, SKS = spam set before filtering (often via rule), BLK = skipped and blocked due to user Blocked Senders.";
     }
 
     function catHelpText(current) {
       const value = (current || "").toUpperCase();
       const currentText = value ? ("Current: " + value + ". ") : "";
-      return currentText + "CAT options: NONE = no category, HSPM = high-confidence spam, SPM = spam, BULK = bulk/gray mail, HPHSH/HPHISH = high-confidence phishing, PHSH = phishing, MALW = malware, BIMP = brand impersonation, DIMP = domain impersonation, GIMP = mailbox intelligence impersonation, INTOS = intra-org phishing, OSPM = outbound spam, AMP/FTBP = malware policy triggers.";
+      return currentText + "CAT = Category (threat policy category). Options: NONE = no category, HSPM = high-confidence spam, SPM = spam, BULK = bulk/gray mail, HPHSH/HPHISH = high-confidence phishing, PHSH = phishing, MALW = malware, BIMP = brand impersonation, DIMP = domain impersonation, GIMP = mailbox intelligence impersonation, INTOS = intra-org phishing, OSPM = outbound spam, AMP/FTBP = malware policy triggers.";
     }
 
     function hopDelayTone(delayMs) {
@@ -1931,19 +1931,19 @@ If Python is not installed on this machine:
 
       renderActionPill(ui.authPills, "SPF: " + parsed.auth.spf, classifyResult(parsed.auth.spf), {
         type: "jumpHeader",
-        hint: "SPF: pass = sender identity validated; fail = high suspicion; softfail = investigate; none = common, but worth investigating. Click to jump to Authentication-Results.",
+        hint: "SPF = Sender Policy Framework. pass = sender identity validated; fail = high suspicion; softfail = investigate; none = common, but worth investigating. Click to jump to Authentication-Results.",
         headerKeys: ["authentication-results", "auth-results", "received-spf"],
         fallbackId: "spamSection"
       });
       renderActionPill(ui.authPills, "DKIM: " + parsed.auth.dkim, classifyResult(parsed.auth.dkim), {
         type: "jumpHeader",
-        hint: "DKIM: pass = signature validated; fail = mismatch or potential tampering; none = unsigned. Click to jump to Authentication-Results.",
+        hint: "DKIM = DomainKeys Identified Mail. pass = signature validated; fail = mismatch or potential tampering; none = unsigned. Click to jump to Authentication-Results.",
         headerKeys: ["authentication-results", "auth-results", "dkim-signature"],
         fallbackId: "spamSection"
       });
       renderActionPill(ui.authPills, "DMARC: " + parsed.auth.dmarc, classifyResult(parsed.auth.dmarc), {
         type: "jumpHeader",
-        hint: "DMARC: pass = aligned sender identity; fail = policy/auth alignment failed. Click to jump to Authentication-Results.",
+        hint: "DMARC = Domain-based Message Authentication, Reporting, and Conformance. pass = aligned sender identity; fail = policy/auth alignment failed. Click to jump to Authentication-Results.",
         headerKeys: ["authentication-results", "auth-results"],
         fallbackId: "spamSection"
       });
@@ -1953,7 +1953,7 @@ If Python is not installed on this machine:
         classifyResult(parsed.auth.compauth),
         {
           type: "jumpHeader",
-          hint: "Composite Authentication (Microsoft): pass indicates overall identity confidence; fail indicates elevated suspicion. Click to jump to Authentication-Results.",
+          hint: "CompAuth = Composite Authentication (Microsoft). pass indicates overall identity confidence; fail indicates elevated suspicion. Click to jump to Authentication-Results.",
           headerKeys: ["authentication-results", "auth-results"],
           fallbackId: "spamSection"
         }
@@ -2026,7 +2026,7 @@ If Python is not installed on this machine:
         msCount += 1;
         renderActionPill(ui.microsoftPills, "SCL: " + ms.scl, classifyScl(ms.scl), {
           type: "jumpHeader",
-          hint: "SCL scale (Microsoft): -1 bypass/skip spam filtering; 0-1 non-spam; 5-6 spam; 7-9 high-confidence spam (2-4 are generally not stamped by spam filtering). Click to jump to related header.",
+          hint: "SCL = Spam Confidence Level. Scale (Microsoft): -1 bypass/skip spam filtering; 0-1 non-spam; 5-6 spam; 7-9 high-confidence spam (2-4 are generally not stamped by spam filtering). Click to jump to related header.",
           headerKeys: ["x-ms-exchange-organization-scl", "x-forefront-antispam-report"],
           fallbackId: "spamSection"
         });
@@ -2035,7 +2035,7 @@ If Python is not installed on this machine:
         msCount += 1;
         renderActionPill(ui.microsoftPills, "BCL: " + ms.bcl, classifyBcl(ms.bcl), {
           type: "jumpHeader",
-          hint: "BCL scale (Microsoft): 0 = not bulk, 1-3 = low-complaint bulk sender, 4-7 = mixed-complaint bulk sender, 8-9 = high-complaint bulk sender. Click to jump to related header.",
+          hint: "BCL = Bulk Complaint Level. Scale (Microsoft): 0 = not bulk, 1-3 = low-complaint bulk sender, 4-7 = mixed-complaint bulk sender, 8-9 = high-complaint bulk sender. Click to jump to related header.",
           headerKeys: ["x-ms-exchange-organization-bcl", "x-microsoft-antispam-bcl", "x-forefront-antispam-report"],
           fallbackId: "spamSection"
         });
@@ -2044,7 +2044,7 @@ If Python is not installed on this machine:
         msCount += 1;
         renderActionPill(ui.microsoftPills, "Phish Score (PCL): " + ms.pcl, classifyPcl(ms.pcl), {
           type: "jumpHeader",
-          hint: "PCL indicates phishing confidence. Higher values indicate stronger phishing likelihood. Click to jump to related header.",
+          hint: "PCL = Phishing Confidence Level. Higher values indicate stronger phishing likelihood. Click to jump to related header.",
           headerKeys: ["x-ms-exchange-organization-pcl", "x-microsoft-antispam-pcl", "x-forefront-antispam-report"],
           fallbackId: "spamSection"
         });
