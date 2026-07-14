@@ -1159,8 +1159,8 @@ If Python is not installed on this machine:
         notes.push("From and Reply-To domains do not match. This can indicate impersonation patterns.");
       }
 
-      if (hops.length > 8) {
-        notes.push("Header contains an unusually long Received chain.");
+      if (hops.length > 12) {
+        notes.push("Header contains an unusually long Received chain (" + hops.length + " hops).");
       }
 
       if (!hops.length) {
