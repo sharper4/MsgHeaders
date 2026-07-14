@@ -987,15 +987,95 @@ If Python is not installed on this machine:
       return parts.length === 2 ? parts[1].toLowerCase() : "";
     }
 
+    function authMeaning(kind, value) {
+      const v = (value || "unknown").toLowerCase();
+      const table = {
+        spf: {
+          fail: "sender IP is not authorized in SPF.",
+          softfail: "sender is probably unauthorized; treat with caution.",
+          neutral: "sender domain did not assert pass or fail.",
+          none: "no SPF record was found for the domain.",
+          temperror: "temporary DNS/SPF lookup problem.",
+          permerror: "permanent SPF record syntax/evaluation error.",
+          unknown: "no SPF result found in parsed headers."
+        },
+        dkim: {
+          fail: "signature check failed or message may have changed.",
+          none: "message was not DKIM signed.",
+          temperror: "temporary DKIM lookup/validation problem.",
+          permerror: "permanent DKIM record/signature problem.",
+          unknown: "no DKIM result found in parsed headers."
+        },
+        dmarc: {
+          fail: "domain alignment/authentication failed policy checks.",
+          bestguesspass: "no DMARC policy found, but message looked aligned.",
+          none: "no DMARC policy was found for the domain.",
+          temperror: "temporary DMARC lookup/processing issue.",
+          permerror: "permanent DMARC record syntax/evaluation issue.",
+          unknown: "no DMARC result found in parsed headers."
+        },
+        compauth: {
+          fail: "Microsoft composite authentication failed.",
+          softpass: "partially trusted based on indirect signals.",
+          none: "composite auth not evaluated or bypassed.",
+          unknown: "no composite auth result found in parsed headers."
+        }
+      };
+      return (table[kind] && table[kind][v]) || "non-pass result requires review.";
+    }
+
+    function sfvMeaning(value) {
+      const v = (value || "").toUpperCase();
+      const map = {
+        NSPM: "message was marked non-spam.",
+        SPM: "message was marked spam by filtering.",
+        SFE: "filtering was skipped and allowed due to Safe Senders.",
+        SKA: "allowed due to tenant allow-list/policy.",
+        SKB: "blocked due to tenant block-list/policy.",
+        SKN: "set non-spam before filtering (often SCL -1 bypass).",
+        SKQ: "released from quarantine and delivered.",
+        SKS: "set spam before filtering (often by mail flow rule).",
+        BLK: "blocked due to user's Blocked Senders list."
+      };
+      return map[v] || "vendor-specific spam filter verdict value.";
+    }
+
+    function catMeaning(value) {
+      const v = (value || "").toUpperCase();
+      const map = {
+        NONE: "no threat category assigned.",
+        HSPM: "high-confidence spam.",
+        SPM: "spam classification.",
+        BULK: "bulk/gray-mail classification.",
+        HPHSH: "high-confidence phishing.",
+        HPHISH: "high-confidence phishing.",
+        PHSH: "phishing classification.",
+        MALW: "malware classification.",
+        BIMP: "brand impersonation signal.",
+        DIMP: "domain impersonation signal.",
+        GIMP: "mailbox intelligence impersonation signal.",
+        INTOS: "intra-organization phishing signal.",
+        OSPM: "outbound spam classification.",
+        AMP: "anti-malware policy trigger.",
+        FTBP: "blocked by anti-malware common attachment filtering."
+      };
+      return map[v] || "vendor-specific category value.";
+    }
+
     function evaluateFindings(auth, envelope, hops, policySignals) {
       const notes = [];
 
-      if ([auth.spf, auth.dkim, auth.dmarc].includes("fail")) {
-        notes.push("At least one authentication mechanism failed (SPF, DKIM, or DMARC). Investigate sender legitimacy.");
-      }
-
-      if (auth.dmarc === "unknown") {
-        notes.push("DMARC result not detected in headers.");
+      const authChecks = [
+        ["SPF", "spf", auth.spf],
+        ["DKIM", "dkim", auth.dkim],
+        ["DMARC", "dmarc", auth.dmarc],
+        ["CompAuth", "compauth", auth.compauth]
+      ];
+      for (const [label, key, valueRaw] of authChecks) {
+        const value = (valueRaw || "unknown").toLowerCase();
+        if (value !== "pass") {
+          notes.push(label + " result: " + value + " - " + authMeaning(key, value));
+        }
       }
 
       const fromDomain = getDomain(envelope.from);
@@ -1026,12 +1106,26 @@ If Python is not installed on this machine:
         notes.push("Bulk signal detected: BCL " + bcl + " indicates bulk/gray-mail characteristics.");
       }
 
-      if (["SPM", "SKS", "SKB"].includes(sfv)) {
-        notes.push("Spam verdict detected in SFV: " + sfv + ".");
+      const pcl = parseInt(forefront.pcl, 10);
+      if (!Number.isNaN(pcl) && pcl >= 3) {
+        notes.push("Phish signal detected: PCL " + pcl + " indicates increased phishing confidence.");
       }
 
-      if (["HSPM", "SPM", "BULK", "HPHSH", "HPHISH", "PHSH", "MALW"].includes(cat)) {
-        notes.push("Threat category detected in CAT: " + cat + ".");
+      if (sfv && sfv !== "NSPM") {
+        notes.push("Spam verdict detected in SFV: " + sfv + " - " + sfvMeaning(sfv));
+      }
+
+      if (cat && cat !== "NONE") {
+        notes.push("Threat category detected in CAT: " + cat + " - " + catMeaning(cat));
+      }
+
+      const ironPortPolicy = (policySignals && policySignals.ironPortPolicy ? policySignals.ironPortPolicy : "").trim();
+      const threatVerdict = (policySignals && policySignals.threatScannerVerdict ? policySignals.threatScannerVerdict : "").trim();
+      if (ironPortPolicy && classifyIronPortPolicy(ironPortPolicy) !== "ok") {
+        notes.push("MailFlowPolicy result: " + ironPortPolicy + " - policy outcome needs review.");
+      }
+      if (threatVerdict && classifyThreatScannerVerdict(threatVerdict) !== "ok") {
+        notes.push("ThreatScannerVerdict result: " + threatVerdict + " - scanner did not return a clean/negative verdict.");
       }
 
       const slowHops = hops.filter(function (hop) {
