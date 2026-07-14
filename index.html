@@ -940,17 +940,20 @@ If Python is not installed on this machine:
         return Array.from(new Set(out));
       }
 
-      const grayMailHeaderKeys = matchingKeys(/gray\s*mail|graymail/i);
+      const ironPortGray = firstHeaderValue(headers, "x-ironport-gray");
+      const grayMailHeaderKeys = matchingKeys(/gray\s*mail|graymail|x-ironport-gray|\bironport-gray\b/i);
       const proxyWrappedHeaderKeys = matchingKeys(/proxy\s*wrapped|proxywrapped/i);
       const hasIronPortContext = allKeys.some(function (key) {
         return key.indexOf("x-ironport") === 0 || key.indexOf("x-threatscanner") === 0;
       }) || grayMailHeaderKeys.length > 0 || proxyWrappedHeaderKeys.length > 0;
+      const grayMailDetected = /\bgray\b/i.test(ironPortGray || "") || grayMailHeaderKeys.length > 0;
 
       return {
         ironPortPolicy: firstHeaderValue(headers, "x-ironport-mailflowpolicy"),
         threatScannerVerdict: firstHeaderValue(headers, "x-threatscannerverdict"),
         hasIronPortContext: hasIronPortContext,
-        grayMailDetected: grayMailHeaderKeys.length > 0,
+        grayMailDetected: grayMailDetected,
+        grayMailValue: ironPortGray,
         grayMailHeaderKeys: grayMailHeaderKeys,
         proxyWrappedUrlFound: proxyWrappedHeaderKeys.length > 0,
         proxyWrappedHeaderKeys: proxyWrappedHeaderKeys,
@@ -1970,12 +1973,12 @@ If Python is not installed on this machine:
         ironCount += 1;
         renderActionPill(
           ui.ironPortPills,
-          "GrayMail: Detected",
+          "GrayMail: " + (iron.grayMailValue || "Detected"),
           "warn",
           {
             type: "jumpHeader",
-            hint: "GrayMail usually indicates bulk or marketing-style email classification, which may be expected newsletters or lower-priority promotional content. Click to jump to matching headers.",
-            headerKeys: (iron.grayMailHeaderKeys && iron.grayMailHeaderKeys.length) ? iron.grayMailHeaderKeys : ["x-ironport-mailflowpolicy"],
+            hint: "X-IronPort-Gray (for example, value Gray) indicates GrayMail/bulk-style classification, often newsletters or promotional campaigns. Click to jump to matching headers.",
+            headerKeys: (iron.grayMailHeaderKeys && iron.grayMailHeaderKeys.length) ? iron.grayMailHeaderKeys : ["x-ironport-gray", "x-ironport-mailflowpolicy"],
             fallbackId: "spamSection"
           }
         );
