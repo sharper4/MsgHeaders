@@ -370,11 +370,24 @@ If Python is not installed on this machine:
     .header-row.attention {
       background: rgba(39, 92, 136, 0.42);
       box-shadow: inset 0 0 0 1px #6fa3ce;
+      animation: attentionPulse 1s ease-in-out 5;
     }
 
     .header-row.attention .header-key,
     .header-row.attention .header-value {
       color: #f3fbff;
+    }
+
+    @keyframes attentionPulse {
+      0%,
+      100% {
+        background: rgba(39, 92, 136, 0.42);
+        box-shadow: inset 0 0 0 1px #6fa3ce;
+      }
+      50% {
+        background: rgba(93, 157, 208, 0.66);
+        box-shadow: inset 0 0 0 1px #9bc5e5;
+      }
     }
 
     th {
