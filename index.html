@@ -343,7 +343,7 @@ If Python is not installed on this machine:
     }
 
     #hopTable tr.hop-delay-warn td {
-      background-color: rgba(196, 142, 38, 0.18) !important;
+      background-color: rgba(196, 142, 38, 0.18);
       border-bottom-color: rgba(196, 142, 38, 0.44);
       box-shadow: inset 0 0 0 1px rgba(214, 170, 86, 0.14);
     }
@@ -357,12 +357,12 @@ If Python is not installed on this machine:
     }
 
     #hopTable tr.attention td {
-      background: rgba(39, 92, 136, 0.42) !important;
+      background: rgba(39, 92, 136, 0.42);
       border-top: 1px solid #6fa3ce;
       border-bottom: 1px solid #6fa3ce;
       box-shadow: inset 0 0 0 1px #6fa3ce;
       color: #f3fbff;
-      animation: hopAttentionPulse 1s ease-in-out 5;
+      animation: attentionPulse 1s ease-in-out 5;
     }
 
     #hopTable tr.attention td:first-child {
@@ -426,18 +426,6 @@ If Python is not installed on this machine:
       50% {
         background: rgba(93, 157, 208, 0.66);
         box-shadow: inset 0 0 0 1px #9bc5e5;
-      }
-    }
-
-    @keyframes hopAttentionPulse {
-      0%,
-      100% {
-        filter: brightness(1);
-        box-shadow: inset 0 0 0 1px #6fa3ce;
-      }
-      50% {
-        filter: brightness(1.45);
-        box-shadow: inset 0 0 0 2px #d8efff;
       }
     }
 
@@ -563,6 +551,23 @@ If Python is not installed on this machine:
       display: none;
     }
 
+    .build-badge {
+      position: fixed;
+      right: 18px;
+      bottom: 62px;
+      z-index: 19;
+      border: 1px solid #355a7b;
+      background: rgba(9, 26, 40, 0.88);
+      color: #9fc5e3;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.7rem;
+      line-height: 1;
+      letter-spacing: 0.2px;
+      pointer-events: none;
+      user-select: none;
+    }
+
     @keyframes rise {
       from {
         opacity: 0;
@@ -681,9 +686,12 @@ If Python is not installed on this machine:
 
     </section>
     <button id="scrollTopBtn" class="floating-action is-hidden" type="button">Go To Top</button>
+    <div id="buildBadge" class="build-badge" aria-label="Build version">Build</div>
   </main>
 
   <script>
+    const APP_BUILD = "2026.07.15.5";
+
     const ui = {
       input: document.getElementById("headerInput"),
       analyzeBtn: document.getElementById("analyzeBtn"),
@@ -708,8 +716,11 @@ If Python is not installed on this machine:
       spamHeaders: document.getElementById("spamHeaders"),
       otherHeaders: document.getElementById("otherHeaders"),
       toggleSpamHeaders: document.getElementById("toggleSpamHeaders"),
-      toggleOtherHeaders: document.getElementById("toggleOtherHeaders")
+      toggleOtherHeaders: document.getElementById("toggleOtherHeaders"),
+      buildBadge: document.getElementById("buildBadge")
     };
+
+    ui.buildBadge.textContent = "Build " + APP_BUILD;
 
     ui.ironPortSectionBlock.style.display = "none";
     ui.microsoftSectionBlock.style.display = "none";
