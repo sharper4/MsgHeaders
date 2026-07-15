@@ -840,6 +840,44 @@ If Python is not installed on this machine:
       return headers[key] && headers[key].length ? headers[key][0] : "";
     }
 
+    function headerValues(headers, key) {
+      return headers[key] && Array.isArray(headers[key]) ? headers[key] : [];
+    }
+
+    function escapeRegExp(text) {
+      return String(text || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+
+    function extractLooseHeaderValues(raw, key) {
+      const values = [];
+      const source = String(raw || "");
+      if (!source.trim() || !key) {
+        return values;
+      }
+
+      const keyPattern = escapeRegExp(key);
+      const re = new RegExp("(?:^|\\r?\\n)\\s*" + keyPattern + "\\s*:?[ \\t]*([^\\r\\n]*)", "ig");
+      let match = re.exec(source);
+
+      while (match) {
+        let value = (match[1] || "").trim();
+        if (!value) {
+          const after = source.slice(re.lastIndex);
+          const nextLine = after.match(/^\\r?\\n[ \\t]*([^\\r\\n]+)/);
+          if (nextLine && nextLine[1]) {
+            value = nextLine[1].trim();
+          }
+        }
+
+        if (value) {
+          values.push(value);
+        }
+        match = re.exec(source);
+      }
+
+      return values;
+    }
+
     function parseAuthResults(headers) {
       const authLines = [
         ...(headers["authentication-results"] || []),
@@ -1181,7 +1219,9 @@ If Python is not installed on this machine:
 
     function determineMailOrigin(parsed) {
       const xOriginIp = (parsed.envelope.xOriginatingIp || "").trim();
-      const authAs = firstHeaderValue(parsed.headers, "x-ms-exchange-organization-authas").toLowerCase();
+      const authAsValues = headerValues(parsed.headers, "x-ms-exchange-organization-authas")
+        .map(function (value) { return String(value || "").toLowerCase(); })
+        .filter(Boolean);
       const firstHop = parsed.hops && parsed.hops.length ? parsed.hops[0] : null;
       const firstHopIp = firstHop && firstHop.ip ? firstHop.ip : "";
       const firstHopFrom = (firstHop && firstHop.from ? firstHop.from : "").toLowerCase();
@@ -1193,11 +1233,11 @@ If Python is not installed on this machine:
         return { value: "External", tone: "warn", reason: "X-Originating-IP is public" };
       }
 
-      if (authAs) {
-        if (authAs.includes("internal")) {
+      if (authAsValues.length) {
+        if (authAsValues.some(function (value) { return /\binternal\b/.test(value); })) {
           return { value: "Internal", tone: "ok", reason: "AuthAs reports internal submission" };
         }
-        if (authAs.includes("anonymous") || authAs.includes("external") || authAs.includes("partner")) {
+        if (authAsValues.some(function (value) { return /\banonymous\b|\bexternal\b|\bpartner\b/.test(value); })) {
           return { value: "External", tone: "warn", reason: "AuthAs reports non-internal submission" };
         }
       }
@@ -2472,6 +2512,21 @@ If Python is not installed on this machine:
 
     function parseHeaders(raw) {
       const headers = parseHeaderMap(raw);
+      const looseAuthAs = extractLooseHeaderValues(raw, "x-ms-exchange-organization-authas");
+      if (looseAuthAs.length) {
+        const existing = new Set(headerValues(headers, "x-ms-exchange-organization-authas").map(function (v) { return String(v || "").toLowerCase(); }));
+        if (!headers["x-ms-exchange-organization-authas"]) {
+          headers["x-ms-exchange-organization-authas"] = [];
+        }
+        for (const value of looseAuthAs) {
+          const lowered = String(value || "").toLowerCase();
+          if (!existing.has(lowered)) {
+            headers["x-ms-exchange-organization-authas"].push(value);
+            existing.add(lowered);
+          }
+        }
+      }
+
       const auth = parseAuthResults(headers);
       const hops = parseReceivedHops(headers);
       const envelope = extractEnvelopeData(headers);
