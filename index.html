@@ -356,6 +356,17 @@ If Python is not installed on this machine:
       background: rgba(180, 35, 24, 0.18);
     }
 
+    #hopTable tr.attention td {
+      background: rgba(46, 149, 255, 0.2) !important;
+      border-top: 1px solid rgba(46, 149, 255, 0.55);
+      border-bottom: 1px solid rgba(46, 149, 255, 0.55);
+      box-shadow: inset 0 0 0 1px rgba(46, 149, 255, 0.32);
+    }
+
+    #hopTable tr.attention td:first-child {
+      border-left: 3px solid rgba(46, 149, 255, 0.95);
+    }
+
     .header-list {
       border: 1px solid var(--line);
       border-radius: 12px;
@@ -1401,6 +1412,18 @@ If Python is not installed on this machine:
       return tone;
     }
 
+    function getLongestHop(hops) {
+      const delayHops = (hops || []).filter(function (hop) {
+        return typeof hop.delayMs === "number";
+      });
+      if (!delayHops.length) {
+        return null;
+      }
+      return delayHops.reduce(function (maxHop, currentHop) {
+        return currentHop.delayMs > maxHop.delayMs ? currentHop : maxHop;
+      }, delayHops[0]);
+    }
+
     function classifyHostLabel(text) {
       const source = (text || "").toLowerCase();
       if (!source) {
@@ -1541,6 +1564,11 @@ If Python is not installed on this machine:
 
         if (action.type === "jumpHeader") {
           jumpToHeader(action.headerKeys || [], action.fallbackId || "spamSection");
+          return;
+        }
+
+        if (action.type === "jumpHop") {
+          jumpToHop(action.hop, action.fallbackId || "routingSection");
         }
       });
 
@@ -1675,6 +1703,8 @@ If Python is not installed on this machine:
       lines.push("Routing");
       lines.push("Hops: " + parsed.hops.length);
       lines.push("End-to-End: " + formatDuration(parsed.totalTransitMs));
+      const longestHop = getLongestHop(parsed.hops);
+      lines.push("Longest Hop: " + (longestHop ? ("#" + longestHop.hop + " (" + formatDuration(longestHop.delayMs) + ")") : "n/a"));
       lines.push("SPF: " + parsed.auth.spf);
       lines.push("DKIM: " + parsed.auth.dkim);
       lines.push("DMARC: " + parsed.auth.dmarc);
@@ -1749,9 +1779,14 @@ If Python is not installed on this machine:
         ["X-Originating-IP", parsed.envelope.xOriginatingIp]
       ];
       const ms = parsed.policySignals.forefront;
+      const longestHop = getLongestHop(parsed.hops);
       const authPills = [
         exportPillHtml("Hops: " + parsed.hops.length, parsed.hops.length ? "ok" : "warn"),
         exportPillHtml("End-to-End: " + formatDuration(parsed.totalTransitMs), parsed.totalTransitMs ? "ok" : "warn"),
+        exportPillHtml(
+          "Longest Hop: " + (longestHop ? ("#" + longestHop.hop + " (" + formatDuration(longestHop.delayMs) + ")") : "n/a"),
+          longestHop ? (hopDelayTone(longestHop.delayMs) || "warn") : "muted"
+        ),
         exportPillHtml("SPF: " + parsed.auth.spf, classifyResult(parsed.auth.spf)),
         exportPillHtml("DKIM: " + parsed.auth.dkim, classifyResult(parsed.auth.dkim)),
         exportPillHtml("DMARC: " + parsed.auth.dmarc, classifyResult(parsed.auth.dmarc)),
@@ -1952,6 +1987,57 @@ If Python is not installed on this machine:
       }
     }
 
+    let hopRowHighlightTimer = null;
+
+    function findHopRow(hopNumber) {
+      if (typeof hopNumber !== "number") {
+        return null;
+      }
+      return ui.hopTable.querySelector('tr[data-hop="' + hopNumber + '"]');
+    }
+
+    function ensureHopRowVisible(row) {
+      if (!row) {
+        return;
+      }
+      if (!ui.hopTableWrap.classList.contains("expanded")) {
+        toggleHopChain();
+      }
+    }
+
+    function highlightHopRow(row) {
+      if (!row) {
+        return;
+      }
+
+      ui.hopTable.querySelectorAll("tr.attention").forEach(function (el) {
+        el.classList.remove("attention");
+      });
+
+      row.classList.add("attention");
+      if (hopRowHighlightTimer) {
+        clearTimeout(hopRowHighlightTimer);
+      }
+      hopRowHighlightTimer = setTimeout(function () {
+        row.classList.remove("attention");
+      }, 5000);
+    }
+
+    function jumpToHop(hopNumber, fallbackId) {
+      const row = findHopRow(hopNumber);
+      if (row) {
+        ensureHopRowVisible(row);
+        row.scrollIntoView({ behavior: "smooth", block: "center" });
+        highlightHopRow(row);
+        return;
+      }
+
+      const fallback = document.getElementById(fallbackId);
+      if (fallback) {
+        fallback.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }
+
     function renderSummary(parsed) {
       ui.routingPills.innerHTML = "";
       ui.authPills.innerHTML = "";
@@ -1992,6 +2078,28 @@ If Python is not installed on this machine:
           fallbackId: "routingSection"
         }
       );
+
+      const longestHop = getLongestHop(parsed.hops);
+      if (longestHop) {
+        renderActionPill(
+          ui.routingPills,
+          "Longest Hop: #" + longestHop.hop + " (" + formatDuration(longestHop.delayMs) + ")",
+          hopDelayTone(longestHop.delayMs) || "warn",
+          {
+            type: "jumpHop",
+            hop: longestHop.hop,
+            hint: "Jump to the slowest Received hop in the routing table.",
+            fallbackId: "routingSection"
+          }
+        );
+      } else {
+        renderPill(
+          ui.routingPills,
+          "Longest Hop: n/a",
+          "muted",
+          "No hop timing deltas are available from Received timestamps."
+        );
+      }
 
       renderActionPill(ui.authPills, "SPF: " + parsed.auth.spf, classifyResult(parsed.auth.spf), {
         type: "jumpHeader",
@@ -2177,6 +2285,7 @@ If Python is not installed on this machine:
 
       for (const hop of parsed.hops) {
         const tr = document.createElement("tr");
+        tr.dataset.hop = String(hop.hop);
         const delayTone = hopDelayTone(hop.delayMs);
         if (delayTone) {
           tr.classList.add("hop-delay-" + delayTone);
