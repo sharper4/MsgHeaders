@@ -1112,6 +1112,99 @@ If Python is not installed on this machine:
       return parts.length === 2 ? parts[1].toLowerCase() : "";
     }
 
+    function isPrivateOrReservedIpv4(ip) {
+      if (!ip) {
+        return false;
+      }
+      const parts = ip.split(".").map(function (v) { return parseInt(v, 10); });
+      if (parts.length !== 4 || parts.some(function (n) { return Number.isNaN(n) || n < 0 || n > 255; })) {
+        return false;
+      }
+
+      if (parts[0] === 10) {
+        return true;
+      }
+      if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) {
+        return true;
+      }
+      if (parts[0] === 192 && parts[1] === 168) {
+        return true;
+      }
+      if (parts[0] === 127) {
+        return true;
+      }
+      if (parts[0] === 169 && parts[1] === 254) {
+        return true;
+      }
+      if (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) {
+        return true;
+      }
+      return false;
+    }
+
+    function looksInternalHostLabel(value) {
+      const source = (value || "").toLowerCase();
+      if (!source) {
+        return false;
+      }
+      const markers = [
+        ".local",
+        ".internal",
+        ".corp",
+        ".intra",
+        "localhost",
+        "mailbox",
+        "exchange"
+      ];
+      return markers.some(function (marker) { return source.includes(marker); });
+    }
+
+    function determineMailOrigin(parsed) {
+      const xOriginIp = (parsed.envelope.xOriginatingIp || "").trim();
+      const firstHop = parsed.hops && parsed.hops.length ? parsed.hops[0] : null;
+      const firstHopIp = firstHop && firstHop.ip ? firstHop.ip : "";
+      const firstHopFrom = firstHop && firstHop.from ? firstHop.from : "";
+      const fromDomain = getDomain(parsed.envelope.from);
+
+      if (xOriginIp && !isPrivateOrReservedIpv4(xOriginIp)) {
+        return {
+          value: "External",
+          tone: "warn",
+          reason: "X-Originating-IP is public (" + xOriginIp + ")"
+        };
+      }
+
+      if (firstHopIp && !isPrivateOrReservedIpv4(firstHopIp)) {
+        return {
+          value: "External",
+          tone: "warn",
+          reason: "Earliest Received hop IP is public (" + firstHopIp + ")"
+        };
+      }
+
+      if ((xOriginIp && isPrivateOrReservedIpv4(xOriginIp)) || (firstHopIp && isPrivateOrReservedIpv4(firstHopIp)) || looksInternalHostLabel(firstHopFrom)) {
+        return {
+          value: "Internal",
+          tone: "ok",
+          reason: "Origin indicators are private/internal"
+        };
+      }
+
+      if (fromDomain && (fromDomain.endsWith(".local") || fromDomain.endsWith(".internal") || fromDomain.endsWith(".corp"))) {
+        return {
+          value: "Internal",
+          tone: "ok",
+          reason: "From domain appears internal (" + fromDomain + ")"
+        };
+      }
+
+      return {
+        value: "Unknown",
+        tone: "muted",
+        reason: "Not enough origin indicators found"
+      };
+    }
+
     function authMeaning(kind, value) {
       const v = (value || "unknown").toLowerCase();
       const table = {
@@ -1702,6 +1795,7 @@ If Python is not installed on this machine:
     }
 
     function formatPlainResultsReport(parsed) {
+      const mailOrigin = determineMailOrigin(parsed);
       const lines = [];
       lines.push("Email Header Analyzer Results");
       lines.push("");
@@ -1719,6 +1813,7 @@ If Python is not installed on this machine:
       for (const [label, value] of detailRows) {
         lines.push(label + ": " + (value || "n/a"));
       }
+      lines.push("Mail Origin: " + mailOrigin.value + " (" + mailOrigin.reason + ")");
       lines.push("");
       lines.push("Potential Findings");
       for (const finding of parsed.findings) {
@@ -1792,6 +1887,7 @@ If Python is not installed on this machine:
     }
 
     function formatHtmlResultsReport(parsed) {
+      const mailOrigin = determineMailOrigin(parsed);
       const detailRows = [
         ["From", parsed.envelope.from],
         ["To", parsed.envelope.to],
@@ -1801,7 +1897,8 @@ If Python is not installed on this machine:
         ["Message-ID", parsed.envelope.messageId],
         ["Return-Path", parsed.envelope.returnPath],
         ["Reply-To", parsed.envelope.replyTo],
-        ["X-Originating-IP", parsed.envelope.xOriginatingIp]
+        ["X-Originating-IP", parsed.envelope.xOriginatingIp],
+        ["Mail Origin", mailOrigin.value + " (" + mailOrigin.reason + ")"]
       ];
       const ms = parsed.policySignals.forefront;
       const longestHop = getLongestHop(parsed.hops);
@@ -2078,6 +2175,7 @@ If Python is not installed on this machine:
       resetHopChainExpansion();
 
       const delaySeverityTone = mostSevereDelayTone(parsed.hops);
+      const mailOrigin = determineMailOrigin(parsed);
 
       renderActionPill(
         ui.routingPills,
@@ -2100,6 +2198,18 @@ If Python is not installed on this machine:
             ? "End-to-end timing color reflects delayed hop highlighting in the Received chain. Click to review delayed hop rows."
             : "Jump to Received headers in full readout.",
           headerKeys: ["received"],
+          fallbackId: "routingSection"
+        }
+      );
+
+      renderActionPill(
+        ui.routingPills,
+        "Mail Origin: " + mailOrigin.value,
+        mailOrigin.tone,
+        {
+          type: "jumpHeader",
+          hint: "Origin guess: " + mailOrigin.reason + ". Click to jump to source headers.",
+          headerKeys: ["x-originating-ip", "received", "from"],
           fallbackId: "routingSection"
         }
       );
@@ -2274,6 +2384,7 @@ If Python is not installed on this machine:
 
       const detailRows = [
         ["From", parsed.envelope.from],
+        ["Mail Origin", mailOrigin.value + " (" + mailOrigin.reason + ")"],
         ["To", parsed.envelope.to],
         ["Cc", parsed.envelope.cc],
         ["Subject", parsed.envelope.subject],
