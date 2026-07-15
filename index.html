@@ -597,11 +597,11 @@ If Python is not installed on this machine:
       }
 
       #routingPills {
-        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+        grid-template-columns: repeat(4, minmax(0, 1fr));
       }
 
       #routingPills .pill {
-        white-space: normal;
+        white-space: nowrap;
       }
 
       .kv-grid {
@@ -611,6 +611,16 @@ If Python is not installed on this machine:
       .header-row {
         grid-template-columns: 1fr;
         gap: 4px;
+      }
+    }
+
+    @media (max-width: 760px) {
+      #routingPills {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      #routingPills .pill {
+        white-space: normal;
       }
     }
   </style>
