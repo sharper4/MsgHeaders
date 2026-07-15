@@ -227,6 +227,17 @@ If Python is not installed on this machine:
       margin-bottom: 8px;
     }
 
+    #routingPills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    #routingPills .origin-pill {
+      margin-left: auto;
+    }
+
     .pill {
       border-radius: 14px;
       padding: 6px 12px;
@@ -591,6 +602,10 @@ If Python is not installed on this machine:
       .header-row {
         grid-template-columns: 1fr;
         gap: 4px;
+      }
+
+      #routingPills .origin-pill {
+        margin-left: 0;
       }
     }
   </style>
@@ -2202,18 +2217,6 @@ If Python is not installed on this machine:
         }
       );
 
-      renderActionPill(
-        ui.routingPills,
-        "Mail Origin: " + mailOrigin.value,
-        mailOrigin.tone,
-        {
-          type: "jumpHeader",
-          hint: "Origin guess: " + mailOrigin.reason + ". Click to jump to source headers.",
-          headerKeys: ["x-originating-ip", "received", "from"],
-          fallbackId: "routingSection"
-        }
-      );
-
       const longestHop = getLongestHop(parsed.hops);
       if (longestHop) {
         renderActionPill(
@@ -2235,6 +2238,19 @@ If Python is not installed on this machine:
           "No hop timing deltas are available from Received timestamps."
         );
       }
+
+      const originPill = renderActionPill(
+        ui.routingPills,
+        "Mail Origin: " + mailOrigin.value,
+        mailOrigin.tone,
+        {
+          type: "jumpHeader",
+          hint: "Origin guess: " + mailOrigin.reason + ". Click to jump to source headers.",
+          headerKeys: ["x-originating-ip", "received", "from"],
+          fallbackId: "routingSection"
+        }
+      );
+      originPill.classList.add("origin-pill");
 
       renderActionPill(ui.authPills, "SPF: " + parsed.auth.spf, classifyResult(parsed.auth.spf), {
         type: "jumpHeader",
