@@ -547,7 +547,7 @@ If Python is not installed on this machine:
     .floating-action {
       position: fixed;
       right: 18px;
-      bottom: 18px;
+      bottom: 62px;
       z-index: 20;
       border: 1px solid #355a7b;
       background: rgba(23, 58, 85, 0.94);
@@ -566,7 +566,7 @@ If Python is not installed on this machine:
     .build-badge {
       position: fixed;
       right: 18px;
-      bottom: 62px;
+      bottom: 18px;
       z-index: 19;
       border: 1px solid #355a7b;
       background: rgba(9, 26, 40, 0.88);
@@ -1181,6 +1181,7 @@ If Python is not installed on this machine:
 
     function determineMailOrigin(parsed) {
       const xOriginIp = (parsed.envelope.xOriginatingIp || "").trim();
+      const authAs = firstHeaderValue(parsed.headers, "x-ms-exchange-organization-authas").toLowerCase();
       const firstHop = parsed.hops && parsed.hops.length ? parsed.hops[0] : null;
       const firstHopIp = firstHop && firstHop.ip ? firstHop.ip : "";
       const firstHopFrom = (firstHop && firstHop.from ? firstHop.from : "").toLowerCase();
@@ -1190,6 +1191,15 @@ If Python is not installed on this machine:
           return { value: "Internal", tone: "ok", reason: "X-Originating-IP is private" };
         }
         return { value: "External", tone: "warn", reason: "X-Originating-IP is public" };
+      }
+
+      if (authAs) {
+        if (authAs.includes("internal")) {
+          return { value: "Internal", tone: "ok", reason: "AuthAs reports internal submission" };
+        }
+        if (authAs.includes("anonymous") || authAs.includes("external") || authAs.includes("partner")) {
+          return { value: "External", tone: "warn", reason: "AuthAs reports non-internal submission" };
+        }
       }
 
       if (firstHopIp) {
@@ -2228,7 +2238,7 @@ If Python is not installed on this machine:
         {
           type: "jumpHeader",
           hint: "Origin guess: " + mailOrigin.reason + ". Click to jump to source headers.",
-          headerKeys: ["x-originating-ip", "received", "from"],
+          headerKeys: ["x-originating-ip", "x-ms-exchange-organization-authas", "received", "from"],
           fallbackId: "routingSection"
         }
       );
