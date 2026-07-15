@@ -1331,8 +1331,9 @@ If Python is not installed on this machine:
       return map[v] || "vendor-specific category value.";
     }
 
-    function evaluateFindings(auth, envelope, hops, policySignals) {
+    function evaluateFindings(auth, envelope, hops, policySignals, mailOrigin) {
       const notes = [];
+      let hasNonPassAuth = false;
 
       const authChecks = [
         ["SPF", "spf", auth.spf],
@@ -1343,8 +1344,13 @@ If Python is not installed on this machine:
       for (const [label, key, valueRaw] of authChecks) {
         const value = (valueRaw || "unknown").toLowerCase();
         if (value !== "pass") {
+          hasNonPassAuth = true;
           notes.push(label + " result: " + value + " - " + authMeaning(key, value));
         }
+      }
+
+      if (hasNonPassAuth && mailOrigin && mailOrigin.value === "Internal") {
+        notes.push("Context note: Mail Origin appears Internal. Internal messages can legitimately show non-pass SPF/DKIM/DMARC/CompAuth due to trusted relay paths, transport rewriting, or policy bypass rules. Correlate with route path and sender context before treating auth results as suspicious.");
       }
 
       const fromDomain = getDomain(envelope.from);
@@ -2530,12 +2536,13 @@ If Python is not installed on this machine:
       const auth = parseAuthResults(headers);
       const hops = parseReceivedHops(headers);
       const envelope = extractEnvelopeData(headers);
+      const mailOrigin = determineMailOrigin({ headers, envelope, hops });
       const groupedHeaders = splitHeaders(headers);
       const totalTransitMs = hops.length > 1 && typeof hops[0].timestampMs === "number" && typeof hops[hops.length - 1].timestampMs === "number"
         ? (hops[hops.length - 1].timestampMs - hops[0].timestampMs)
         : null;
       const policySignals = extractPolicySignals(headers);
-      const findings = evaluateFindings(auth, envelope, hops, policySignals);
+      const findings = evaluateFindings(auth, envelope, hops, policySignals, mailOrigin);
       const partial = { headers, auth, hops, envelope, findings, groupedHeaders, totalTransitMs, policySignals };
       const narrativeSummary = buildNarrativeSummary(partial);
       return { headers, auth, hops, envelope, findings, groupedHeaders, totalTransitMs, policySignals, narrativeSummary };
