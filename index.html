@@ -1174,49 +1174,129 @@ If Python is not installed on this machine:
       return markers.some(function (marker) { return source.includes(marker); });
     }
 
+    function parseForefrontCip(headers) {
+      const forefront = firstHeaderValue(headers, "x-forefront-antispam-report");
+      if (!forefront) {
+        return "";
+      }
+      const match = forefront.match(/(?:^|;)\s*CIP\s*:\s*((?:\d{1,3}\.){3}\d{1,3})/i);
+      return match ? match[1] : "";
+    }
+
+    function isLikelyInternalDomain(domain) {
+      const d = (domain || "").toLowerCase();
+      if (!d) {
+        return false;
+      }
+      return d.endsWith(".local") || d.endsWith(".internal") || d.endsWith(".corp") || d.endsWith(".intra");
+    }
+
+    function pushUniqueReason(bucket, text) {
+      if (!text) {
+        return;
+      }
+      if (!bucket.includes(text)) {
+        bucket.push(text);
+      }
+    }
+
     function determineMailOrigin(parsed) {
+      const headers = parsed.headers || {};
       const xOriginIp = (parsed.envelope.xOriginatingIp || "").trim();
+      const cip = parseForefrontCip(headers);
       const firstHop = parsed.hops && parsed.hops.length ? parsed.hops[0] : null;
       const firstHopIp = firstHop && firstHop.ip ? firstHop.ip : "";
       const firstHopFrom = firstHop && firstHop.from ? firstHop.from : "";
+      const firstHopBy = firstHop && firstHop.by ? firstHop.by : "";
       const fromDomain = getDomain(parsed.envelope.from);
+      const toDomain = getDomain(parsed.envelope.to);
+
+      const authAs = (firstHeaderValue(headers, "x-ms-exchange-organization-authas") || firstHeaderValue(headers, "x-ms-exchange-crosstenant-authas") || "").toLowerCase();
+      const directionality = (firstHeaderValue(headers, "x-ms-exchange-organization-messagedirectionality") || "").toLowerCase();
+
+      let internalScore = 0;
+      let externalScore = 0;
+      const internalReasons = [];
+      const externalReasons = [];
+
+      if (authAs.includes("internal")) {
+        internalScore += 4;
+        pushUniqueReason(internalReasons, "AuthAs=Internal");
+      } else if (authAs.includes("anonymous") || authAs.includes("external")) {
+        externalScore += 4;
+        pushUniqueReason(externalReasons, "AuthAs=" + authAs);
+      }
+
+      if (directionality.includes("originating")) {
+        internalScore += 3;
+        pushUniqueReason(internalReasons, "MessageDirectionality=Originating");
+      } else if (directionality.includes("incoming")) {
+        externalScore += 3;
+        pushUniqueReason(externalReasons, "MessageDirectionality=Incoming");
+      }
 
       if (xOriginIp && !isPrivateOrReservedIpv4(xOriginIp)) {
-        return {
-          value: "External",
-          tone: "warn",
-          reason: "X-Originating-IP is public (" + xOriginIp + ")"
-        };
+        externalScore += 4;
+        pushUniqueReason(externalReasons, "X-Originating-IP is public (" + xOriginIp + ")");
+      } else if (xOriginIp && isPrivateOrReservedIpv4(xOriginIp)) {
+        internalScore += 2;
+        pushUniqueReason(internalReasons, "X-Originating-IP is private (" + xOriginIp + ")");
+      }
+
+      if (cip && !isPrivateOrReservedIpv4(cip)) {
+        externalScore += 3;
+        pushUniqueReason(externalReasons, "Forefront CIP is public (" + cip + ")");
+      } else if (cip && isPrivateOrReservedIpv4(cip)) {
+        internalScore += 2;
+        pushUniqueReason(internalReasons, "Forefront CIP is private (" + cip + ")");
       }
 
       if (firstHopIp && !isPrivateOrReservedIpv4(firstHopIp)) {
+        externalScore += 2;
+        pushUniqueReason(externalReasons, "Earliest Received hop IP is public (" + firstHopIp + ")");
+      } else if (firstHopIp && isPrivateOrReservedIpv4(firstHopIp)) {
+        internalScore += 1;
+        pushUniqueReason(internalReasons, "Earliest Received hop IP is private (" + firstHopIp + ")");
+      }
+
+      if (looksInternalHostLabel(firstHopFrom) || looksInternalHostLabel(firstHopBy)) {
+        internalScore += 1;
+        pushUniqueReason(internalReasons, "Received host labels appear internal");
+      }
+
+      if (fromDomain && toDomain && fromDomain === toDomain) {
+        internalScore += 1;
+        pushUniqueReason(internalReasons, "From/To domains match (" + fromDomain + ")");
+      } else if (fromDomain && toDomain && fromDomain !== toDomain) {
+        externalScore += 1;
+        pushUniqueReason(externalReasons, "From/To domains differ");
+      }
+
+      if (isLikelyInternalDomain(fromDomain)) {
+        internalScore += 2;
+        pushUniqueReason(internalReasons, "From domain appears internal (" + fromDomain + ")");
+      }
+
+      if (externalScore >= internalScore + 2) {
         return {
           value: "External",
           tone: "warn",
-          reason: "Earliest Received hop IP is public (" + firstHopIp + ")"
+          reason: externalReasons.slice(0, 2).join("; ") || "External indicators outweigh internal signals"
         };
       }
 
-      if ((xOriginIp && isPrivateOrReservedIpv4(xOriginIp)) || (firstHopIp && isPrivateOrReservedIpv4(firstHopIp)) || looksInternalHostLabel(firstHopFrom)) {
+      if (internalScore >= externalScore + 2) {
         return {
           value: "Internal",
           tone: "ok",
-          reason: "Origin indicators are private/internal"
-        };
-      }
-
-      if (fromDomain && (fromDomain.endsWith(".local") || fromDomain.endsWith(".internal") || fromDomain.endsWith(".corp"))) {
-        return {
-          value: "Internal",
-          tone: "ok",
-          reason: "From domain appears internal (" + fromDomain + ")"
+          reason: internalReasons.slice(0, 2).join("; ") || "Internal indicators outweigh external signals"
         };
       }
 
       return {
         value: "Unknown",
         tone: "muted",
-        reason: "Not enough origin indicators found"
+        reason: "Mixed or weak indicators (internal score " + internalScore + ", external score " + externalScore + ")"
       };
     }
 
@@ -2246,7 +2326,7 @@ If Python is not installed on this machine:
         {
           type: "jumpHeader",
           hint: "Origin guess: " + mailOrigin.reason + ". Click to jump to source headers.",
-          headerKeys: ["x-originating-ip", "received", "from"],
+          headerKeys: ["x-ms-exchange-organization-authas", "x-ms-exchange-organization-messagedirectionality", "x-originating-ip", "x-forefront-antispam-report", "received", "from"],
           fallbackId: "routingSection"
         }
       );
