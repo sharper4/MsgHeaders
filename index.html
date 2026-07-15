@@ -2260,7 +2260,7 @@ If Python is not installed on this machine:
         renderActionPill(
           ui.routingPills,
           "Longest Hop: #" + longestHop.hop + " (" + formatDuration(longestHop.delayMs) + ")",
-          hopDelayTone(longestHop.delayMs) || "warn",
+          hopDelayTone(longestHop.delayMs) || "ok",
           {
             type: "jumpHop",
             hop: longestHop.hop,
