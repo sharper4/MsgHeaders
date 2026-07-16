@@ -2104,8 +2104,6 @@ If Python is not installed on this machine:
       if (!ui.hopTable.querySelector("tr")) {
         return;
       }
-      ui.hopTableWrap.classList.add("expanded");
-      ui.toggleHopChain.textContent = "Show Less";
       updateHopChainViewport();
     }
 
@@ -2571,7 +2569,8 @@ If Python is not installed on this machine:
       ui.resultsShell.classList.remove("is-hidden");
       ui.scrollTopBtn.classList.remove("is-hidden");
       requestAnimationFrame(function () {
-        ui.resultsShell.scrollIntoView({ behavior: "smooth", block: "start" });
+        updateHopChainViewport();
+        ui.hopTableWrap.scrollIntoView({ behavior: "auto", block: "start" });
       });
     }
 
