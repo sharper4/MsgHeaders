@@ -2570,7 +2570,7 @@ If Python is not installed on this machine:
       ui.scrollTopBtn.classList.remove("is-hidden");
       requestAnimationFrame(function () {
         updateHopChainViewport();
-        ui.hopTableWrap.scrollIntoView({ behavior: "auto", block: "start" });
+        ui.resultsShell.scrollIntoView({ behavior: "smooth", block: "start" });
       });
     }
 
