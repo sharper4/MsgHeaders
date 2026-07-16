@@ -2100,6 +2100,15 @@ If Python is not installed on this machine:
       updateHopChainViewport();
     }
 
+    function openHopChainByDefault() {
+      if (!ui.hopTable.querySelector("tr")) {
+        return;
+      }
+      ui.hopTableWrap.classList.add("expanded");
+      ui.toggleHopChain.textContent = "Show Less";
+      updateHopChainViewport();
+    }
+
     let rowHighlightTimer = null;
 
     function findHeaderRowByKey(headerKey) {
@@ -2504,6 +2513,7 @@ If Python is not installed on this machine:
 
       renderHeaderCollection(ui.spamHeaders, parsed.groupedHeaders.spamHeaders);
       renderHeaderCollection(ui.otherHeaders, parsed.groupedHeaders.otherHeaders);
+      openHopChainByDefault();
 
     }
 
