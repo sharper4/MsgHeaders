@@ -2614,7 +2614,7 @@ If Python is not installed on this machine:
         msCount += 1;
         renderActionPill(ui.microsoftPills, "Phish Score (PCL): " + ms.pcl, classifyPcl(ms.pcl), {
           type: "jumpHeader",
-          hint: "PCL = Phishing Confidence Level. Higher values indicate stronger phishing likelihood. Click to jump to related header.",
+          hint: "PCL = Phishing Confidence Level. Typical Microsoft range is -1 to 8: -1 means filtering was bypassed or skipped, 0-1 is low, 2-3 is moderate, and 4-8 indicates increasing phishing confidence. PCL is supporting evidence; interpret it with SFV and CAT and do not treat it as proof by itself.",
           headerKeys: ["x-ms-exchange-organization-pcl", "x-microsoft-antispam-pcl", "x-forefront-antispam-report"],
           fallbackId: "spamSection"
         });
