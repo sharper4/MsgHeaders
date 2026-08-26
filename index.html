@@ -667,7 +667,7 @@ If Python is not installed on this machine:
         </section>
 
                 <section id="microsoftSectionBlock">
-          <h3 class="heading-line">Receiving Gateway Signals</h3>
+                  <h3 class="heading-line">Microsoft Threat Signals</h3>
           <div id="microsoftPills" class="status-row"></div>
         </section>
 
@@ -909,6 +909,7 @@ If Python is not installed on this machine:
         const reason = source.match(/reason\s*=\s*([0-9]+)/i);
 
         const spfMatch = source.match(/(?:^|[;\s])spf\s*=\s*(pass|fail|softfail|softpass|neutral|temperror|permerror|none)\b/i)
+          || source.match(/^\s*(pass|fail|softfail|softpass|neutral|temperror|permerror|none)\b/i)
           || source.match(/(?:^|\s)received-spf\s*:\s*(pass|fail|softfail|softpass|neutral|temperror|permerror|none)\b/i)
           || source.match(/(?:^|[;\s])received-spf\s*=\s*(pass|fail|softfail|softpass|neutral|temperror|permerror|none)\b/i);
         const dkimMatch = source.match(/(?:^|[;\s])dkim\s*=\s*(pass|fail|temperror|permerror|none)\b/i);
@@ -2428,21 +2429,28 @@ If Python is not installed on this machine:
       }
       ui.ironPortSectionBlock.style.display = ironCount ? "block" : "none";
 
-            const googleHasSignals = Boolean(parsed.headers["received-spf"] && parsed.headers["received-spf"].length)
-              || Boolean(parsed.headers["authentication-results"] && parsed.headers["authentication-results"].some(function (value) { return /google\.com/i.test(value); }))
-              || Boolean(parsed.headers["x-google-smtp-source"] && parsed.headers["x-google-smtp-source"].length);
+      const googleSpam = firstHeaderValue(parsed.headers, "x-gm-spam");
+      const googlePhishy = firstHeaderValue(parsed.headers, "x-gm-phishy");
+      const googleHasSignals = googleSpam !== "" || googlePhishy !== "";
 
-            if (googleHasSignals) {
-              const receivedSpfValue = firstHeaderValue(parsed.headers, "received-spf");
-              if (receivedSpfValue) {
-                renderPill(ui.googlePills, "Received-SPF: " + receivedSpfValue.split(";")[0].trim(), classifyResult(parsed.auth.spf), "Google-side SPF evidence from the receiver layer.");
-              }
-              if (parsed.headers["x-google-smtp-source"] && parsed.headers["x-google-smtp-source"].length) {
-                renderPill(ui.googlePills, "X-Google-SMTP-Source present", "muted", "Google mail infrastructure indicator is present in the headers.");
-              }
-            }
+      if (googleSpam !== "") {
+        renderActionPill(ui.googlePills, "Gmail Spam: " + googleSpam, googleSpam === "0" ? "good" : "bad", {
+          type: "jumpHeader",
+          hint: "X-Gm-Spam is Google's spam classification signal.",
+          headerKeys: ["x-gm-spam"],
+          fallbackId: "spamSection"
+        });
+      }
+      if (googlePhishy !== "") {
+        renderActionPill(ui.googlePills, "Gmail Phishy: " + googlePhishy, googlePhishy === "0" ? "good" : "bad", {
+          type: "jumpHeader",
+          hint: "X-Gm-Phishy is Google's phishing classification signal.",
+          headerKeys: ["x-gm-phishy"],
+          fallbackId: "spamSection"
+        });
+      }
 
-            ui.googleSectionBlock.style.display = googleHasSignals ? "block" : "none";
+      ui.googleSectionBlock.style.display = googleHasSignals ? "block" : "none";
 
       const ms = parsed.policySignals.forefront;
       let msCount = 0;
