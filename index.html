@@ -735,7 +735,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.08.26.1238";
+    const APP_BUILD = "2026.08.26.1240";
 
     const ui = {
       input: document.getElementById("headerInput"),
@@ -1106,7 +1106,6 @@ If Python is not installed on this machine:
         scl: extract("SCL", forefront),
         sfv: extract("SFV", forefront),
         cat: extract("CAT", forefront),
-        dir: extract("DIR", forefront),
         ipv: extract("IPV", forefront),
         sfty: extract("SFTY", forefront),
         bcl: extract("BCL", forefront),
@@ -1444,9 +1443,6 @@ If Python is not installed on this machine:
 
     function microsoftSignalTone(field, value) {
       const normalized = String(value || "").toUpperCase();
-      if (field === "DIR") {
-        return normalized === "INB" ? "ok" : "muted";
-      }
       if (field === "IPV") {
         return ["NLI", "CAL", "CI"].includes(normalized) ? "ok" : "warn";
       }
@@ -1459,7 +1455,6 @@ If Python is not installed on this machine:
     function microsoftSignalHint(field, value) {
       const normalized = String(value || "").toUpperCase();
       const meanings = {
-        DIR: { INB: "Inbound message to the recipient organization.", OUT: "Outbound message from the organization." },
         IPV: { NLI: "IP reputation was not listed or no IP reputation issue was identified.", CAL: "IP reputation was calculated and considered acceptable.", CI: "IP reputation information was available." },
         SFTY: "Microsoft safety score on an approximately 1-10 scale. It is a vendor diagnostic, not a standalone spam or threat verdict; interpret it with SFV and CAT. A high score is not automatically bad."
       };
@@ -2591,15 +2586,6 @@ If Python is not installed on this machine:
           type: "jumpHeader",
           hint: "Supporting Microsoft Spam Confidence Level. It does not override SFV or CAT. Scale: -1 bypass/skip; 0-1 low; 5-6 spam; 7-9 high-confidence spam.",
           headerKeys: ["x-ms-exchange-organization-scl", "x-forefront-antispam-report"],
-          fallbackId: "spamSection"
-        });
-      }
-      if (ms.dir) {
-        msCount += 1;
-        renderActionPill(ui.microsoftPills, "DIR: " + ms.dir, microsoftSignalTone("DIR", ms.dir), {
-          type: "jumpHeader",
-          hint: microsoftSignalHint("DIR", ms.dir),
-          headerKeys: ["x-forefront-antispam-report"],
           fallbackId: "spamSection"
         });
       }
