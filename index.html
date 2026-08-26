@@ -1441,8 +1441,7 @@ If Python is not installed on this machine:
         return ["NLI", "CAL", "CI"].includes(normalized) ? "ok" : "warn";
       }
       if (field === "SFTY") {
-        const score = parseFloat(value);
-        return Number.isNaN(score) ? "muted" : (score >= 7 ? "bad" : score >= 4 ? "warn" : "ok");
+        return "muted";
       }
       return "muted";
     }
@@ -1452,7 +1451,7 @@ If Python is not installed on this machine:
       const meanings = {
         DIR: { INB: "Inbound message to the recipient organization.", OUT: "Outbound message from the organization." },
         IPV: { NLI: "IP reputation was not listed or no IP reputation issue was identified.", CAL: "IP reputation was calculated and considered acceptable.", CI: "IP reputation information was available." },
-        SFTY: "Microsoft safety confidence score; higher values can indicate more suspicious content and should be interpreted with SFV and CAT."
+        SFTY: "Microsoft safety score on an approximately 1-10 scale. It is a vendor diagnostic, not a standalone spam or threat verdict; interpret it with SFV and CAT. A high score is not automatically bad."
       };
       if (field === "SFTY") return meanings.SFTY + " Raw value: " + value + ".";
       return (meanings[field] && meanings[field][normalized]) || (field + " is a Microsoft diagnostic value; raw value: " + value + ".");
@@ -2474,7 +2473,6 @@ If Python is not installed on this machine:
       const authRecords = parsed.auth.records || [];
       const authRecordSummary = function (record) {
         const values = [];
-        if (record.spf && record.spf !== "unknown") values.push("SPF " + record.spf.toUpperCase());
         if (record.dkim && record.dkim !== "unknown") values.push("DKIM " + record.dkim.toUpperCase());
         if (record.dmarc && record.dmarc !== "unknown") values.push("DMARC " + record.dmarc.toUpperCase());
         if (record.arc && record.arc !== "unknown") values.push("ARC " + record.arc.toUpperCase());
@@ -2483,8 +2481,8 @@ If Python is not installed on this machine:
       };
       for (const record of authRecords.filter(function (record) { return record.header !== "received-spf"; })) {
         const summary = authRecordSummary(record);
-        if (summary) {
-          const primaryResult = record.spf !== "unknown" ? record.spf : record.dkim !== "unknown" ? record.dkim : record.dmarc;
+        if (summary && (record.dkim !== "unknown" || record.dmarc !== "unknown" || record.arc !== "unknown" || record.compauth !== "unknown")) {
+          const primaryResult = record.dkim !== "unknown" ? record.dkim : record.dmarc !== "unknown" ? record.dmarc : record.arc !== "unknown" ? record.arc : record.compauth;
           const compactResult = primaryResult === "pass" ? "Pass" : primaryResult === "unknown" ? "Unknown" : "Fail";
           renderActionPill(ui.authPills, (record.validator || "Unknown") + ": " + compactResult, classifyResult(primaryResult), {
             type: "jumpHeader",
@@ -2494,12 +2492,13 @@ If Python is not installed on this machine:
           });
         }
       }
-      for (const record of (parsed.auth.receivedSpfRecords || [])) {
-        const compactResult = record.result === "pass" ? "Pass" : record.result === "unknown" ? "Unknown" : "Fail";
-        renderActionPill(ui.authPills, "Received-SPF: " + compactResult, classifyResult(record.result), {
+      const fromDomain = getDomain(parsed.envelope.from);
+      const returnPathDomain = getDomain(parsed.envelope.returnPath);
+      if (parsed.auth.spf !== "unknown" && fromDomain && returnPathDomain && fromDomain !== returnPathDomain) {
+        renderActionPill(ui.authPills, "SPF alignment: Fail", "warn", {
           type: "jumpHeader",
-          hint: "Independent Received-SPF evaluation from " + record.receiver + ". Provenance: " + record.provenance + ". Other SPF evaluations are preserved separately.",
-          headerKeys: ["received-spf"],
+          hint: "SPF authentication passed or failed independently from alignment. The From domain (" + fromDomain + ") and Return-Path domain (" + returnPathDomain + ") do not match.",
+          headerKeys: ["from", "return-path", "authentication-results", "received-spf"],
           fallbackId: "spamSection"
         });
       }
