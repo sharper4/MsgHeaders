@@ -1432,6 +1432,32 @@ If Python is not installed on this machine:
       return sfvLabels[sfv] || "Microsoft 365 Filtering Verdict: Available";
     }
 
+    function microsoftSignalTone(field, value) {
+      const normalized = String(value || "").toUpperCase();
+      if (field === "DIR") {
+        return normalized === "INB" ? "ok" : "muted";
+      }
+      if (field === "IPV") {
+        return ["NLI", "CAL", "CI"].includes(normalized) ? "ok" : "warn";
+      }
+      if (field === "SFTY") {
+        const score = parseFloat(value);
+        return Number.isNaN(score) ? "muted" : (score >= 7 ? "bad" : score >= 4 ? "warn" : "ok");
+      }
+      return "muted";
+    }
+
+    function microsoftSignalHint(field, value) {
+      const normalized = String(value || "").toUpperCase();
+      const meanings = {
+        DIR: { INB: "Inbound message to the recipient organization.", OUT: "Outbound message from the organization." },
+        IPV: { NLI: "IP reputation was not listed or no IP reputation issue was identified.", CAL: "IP reputation was calculated and considered acceptable.", CI: "IP reputation information was available." },
+        SFTY: "Microsoft safety confidence score; higher values can indicate more suspicious content and should be interpreted with SFV and CAT."
+      };
+      if (field === "SFTY") return meanings.SFTY + " Raw value: " + value + ".";
+      return (meanings[field] && meanings[field][normalized]) || (field + " is a Microsoft diagnostic value; raw value: " + value + ".");
+    }
+
     function evaluateFindings(auth, envelope, hops, policySignals, mailOrigin) {
       const notes = [];
       let hasNonPassAuth = false;
@@ -1483,12 +1509,13 @@ If Python is not installed on this machine:
       const cat = (forefront.cat || "").toUpperCase();
 
       if (forefront.hasForefront && (sfv || cat)) {
-        notes.push("Why this Microsoft verdict: X-Forefront-Antispam-Report was detected; " +
-          (sfv ? "SFV=" + sfv + ". " : "") +
-          (cat ? "CAT=" + cat + ". " : "") +
-          (forefront.scl ? "SCL=" + forefront.scl + " is supporting information." : ""));
+        const verdict = microsoftVerdictText(forefront).replace(/^Microsoft (?:Verdict|Filtering):\s*/, "");
+        notes.push("Microsoft filtering classified this message as " + verdict + ". Evidence: " +
+          (sfv ? "SFV " + sfv + ". " : "") +
+          (cat && cat !== "NONE" ? "Threat category " + cat + ". " : "") +
+          (forefront.scl ? "SCL " + forefront.scl + " is supporting context, not the primary verdict." : ""));
       } else if (!forefront.hasForefront && policySignals && policySignals.upstreamScl) {
-        notes.push("Why Microsoft 365 Filtering Verdict is Not Available: standalone X-MS-Exchange-Organization-SCL=" + policySignals.upstreamScl + " was treated as upstream metadata because no attributable recipient-side X-Forefront-Antispam-Report was found.");
+        notes.push("Microsoft filtering was not available. An Exchange SCL value was found, but no recipient-side Microsoft antispam report was present, so SCL " + policySignals.upstreamScl + " was treated as upstream metadata and excluded from the verdict.");
       }
 
       if (!Number.isNaN(scl) && scl >= 5) {
@@ -2457,18 +2484,21 @@ If Python is not installed on this machine:
       for (const record of authRecords.filter(function (record) { return record.header !== "received-spf"; })) {
         const summary = authRecordSummary(record);
         if (summary) {
-          renderActionPill(ui.authPills, (record.validator || "Unknown validator") + " Authentication: " + summary + " (" + record.provenance + ")", "muted", {
+          const primaryResult = record.spf !== "unknown" ? record.spf : record.dkim !== "unknown" ? record.dkim : record.dmarc;
+          const compactResult = primaryResult === "pass" ? "Pass" : primaryResult === "unknown" ? "Unknown" : "Fail";
+          renderActionPill(ui.authPills, (record.validator || "Unknown") + ": " + compactResult, classifyResult(primaryResult), {
             type: "jumpHeader",
-            hint: "Independent authentication evaluation preserved from " + record.header + ". Attribution is unknown unless the receiving system can be established from the surrounding route.",
+            hint: "Authentication details: " + summary + ". Provenance: " + record.provenance + ". Raw source: " + record.header + ".",
             headerKeys: [record.header],
             fallbackId: "spamSection"
           });
         }
       }
       for (const record of (parsed.auth.receivedSpfRecords || [])) {
-        renderActionPill(ui.authPills, "Received-SPF #" + (record.index + 1) + ": " + record.result.toUpperCase() + " (" + record.provenance + ")", classifyResult(record.result), {
+        const compactResult = record.result === "pass" ? "Pass" : record.result === "unknown" ? "Unknown" : "Fail";
+        renderActionPill(ui.authPills, "Received-SPF: " + compactResult, classifyResult(record.result), {
           type: "jumpHeader",
-          hint: "Independent Received-SPF evaluation. Receiver: " + record.receiver + ". It is preserved separately and is not silently merged with other authentication systems.",
+          hint: "Independent Received-SPF evaluation from " + record.receiver + ". Provenance: " + record.provenance + ". Other SPF evaluations are preserved separately.",
           headerKeys: ["received-spf"],
           fallbackId: "spamSection"
         });
@@ -2559,21 +2589,6 @@ If Python is not installed on this machine:
 
       const ms = parsed.policySignals.forefront;
       let msCount = 0;
-      if (!ms.hasForefront && parsed.policySignals.upstreamScl) {
-        msCount += 1;
-        renderActionPill(ui.microsoftPills, "Microsoft 365 Filtering Verdict: Not Available", "muted", {
-          type: "jumpHeader",
-          hint: "An Exchange SCL value was detected, but no recipient-side Microsoft antispam report was found. The SCL is treated as upstream metadata and excluded from the recipient-side verdict.",
-          headerKeys: ["x-ms-exchange-organization-scl"],
-          fallbackId: "spamSection"
-        });
-        renderActionPill(ui.microsoftPills, "Upstream Exchange SCL: " + parsed.policySignals.upstreamScl, "muted", {
-          type: "jumpHeader",
-          hint: "Upstream only. This Exchange SCL is preserved as metadata and does not establish a recipient-side Microsoft filtering verdict.",
-          headerKeys: ["x-ms-exchange-organization-scl"],
-          fallbackId: "spamSection"
-        });
-      }
       if (ms.hasForefront && (ms.sfv || ms.cat)) {
         msCount += 1;
         renderActionPill(ui.microsoftPills, microsoftVerdictText(ms), ms.cat && ms.cat !== "NONE" ? classifyCat(ms.cat) : classifySfv(ms.sfv), {
@@ -2587,34 +2602,34 @@ If Python is not installed on this machine:
         msCount += 1;
         renderActionPill(ui.microsoftPills, "SCL: " + ms.scl, classifyScl(ms.scl), {
           type: "jumpHeader",
-          hint: "SCL = Spam Confidence Level. Scale (Microsoft): -1 bypass/skip spam filtering; 0-1 non-spam; 5-6 spam; 7-9 high-confidence spam (2-4 are generally not stamped by spam filtering). Click to jump to related header.",
+          hint: "Supporting Microsoft Spam Confidence Level. It does not override SFV or CAT. Scale: -1 bypass/skip; 0-1 low; 5-6 spam; 7-9 high-confidence spam.",
           headerKeys: ["x-ms-exchange-organization-scl", "x-forefront-antispam-report"],
           fallbackId: "spamSection"
         });
       }
       if (ms.dir) {
         msCount += 1;
-        renderActionPill(ui.microsoftPills, "DIR: " + ms.dir, "muted", {
+        renderActionPill(ui.microsoftPills, "DIR: " + ms.dir, microsoftSignalTone("DIR", ms.dir), {
           type: "jumpHeader",
-          hint: "DIR is the Microsoft delivery direction recorded in X-Forefront-Antispam-Report.",
+          hint: microsoftSignalHint("DIR", ms.dir),
           headerKeys: ["x-forefront-antispam-report"],
           fallbackId: "spamSection"
         });
       }
       if (ms.ipv) {
         msCount += 1;
-        renderActionPill(ui.microsoftPills, "IPV: " + ms.ipv, "muted", {
+        renderActionPill(ui.microsoftPills, "IPV: " + ms.ipv, microsoftSignalTone("IPV", ms.ipv), {
           type: "jumpHeader",
-          hint: "IPV is the Microsoft IP reputation result from X-Forefront-Antispam-Report.",
+          hint: microsoftSignalHint("IPV", ms.ipv),
           headerKeys: ["x-forefront-antispam-report"],
           fallbackId: "spamSection"
         });
       }
       if (ms.sfty) {
         msCount += 1;
-        renderActionPill(ui.microsoftPills, "SFTY: " + ms.sfty, "muted", {
+        renderActionPill(ui.microsoftPills, "SFTY: " + ms.sfty, microsoftSignalTone("SFTY", ms.sfty), {
           type: "jumpHeader",
-          hint: "SFTY is the Microsoft safety/threat classification context from X-Forefront-Antispam-Report.",
+          hint: microsoftSignalHint("SFTY", ms.sfty),
           headerKeys: ["x-forefront-antispam-report"],
           fallbackId: "spamSection"
         });
