@@ -887,49 +887,51 @@ If Python is not installed on this machine:
     }
 
     function parseAuthResults(headers) {
-      const authLines = [
-        ...(headers["authentication-results"] || []),
-        ...(headers["auth-results"] || []),
-        ...(headers["received-spf"] || []),
-        ...(headers["arc-authentication-results"] || [])
-      ];
-
       const result = {
         spf: "unknown",
         dkim: "unknown",
         dmarc: "unknown",
         compauth: "unknown",
-        compauthReason: ""
+        compauthReason: "",
+        records: [],
+        receivedSpfRecords: []
       };
 
-      const authKeywords = ["pass", "fail", "softfail", "softpass", "neutral", "temperror", "permerror", "none"];
-
-      for (const line of authLines) {
-        const source = String(line || "");
+      const resultNames = ["pass", "fail", "softfail", "softpass", "neutral", "temperror", "permerror", "none"];
+      const authHeaderNames = ["authentication-results", "auth-results", "arc-authentication-results"];
+      const parseRecord = function (source, headerName, index) {
+        const validatorMatch = source.match(/^\s*([^;\s]+)/);
+        const validator = validatorMatch ? validatorMatch[1] : "unknown";
+        const getResult = function (name) {
+          const match = source.match(new RegExp("(?:^|[;\\s])" + name + "\\s*=\\s*(" + resultNames.join("|") + ")\\b", "i"));
+          return match ? match[1].toLowerCase() : "unknown";
+        };
         const reason = source.match(/reason\s*=\s*([0-9]+)/i);
+        return { header: headerName, index: index, validator: validator, provenance: "unknown", spf: getResult("spf"), dkim: getResult("dkim"), dmarc: getResult("dmarc"), arc: getResult("arc"), compauth: getResult("compauth"), compauthReason: reason ? reason[1] : "", raw: source };
+      };
 
-        const spfMatch = source.match(/(?:^|[;\s])spf\s*=\s*(pass|fail|softfail|softpass|neutral|temperror|permerror|none)\b/i)
-          || source.match(/^\s*(pass|fail|softfail|softpass|neutral|temperror|permerror|none)\b/i)
-          || source.match(/(?:^|\s)received-spf\s*:\s*(pass|fail|softfail|softpass|neutral|temperror|permerror|none)\b/i)
-          || source.match(/(?:^|[;\s])received-spf\s*=\s*(pass|fail|softfail|softpass|neutral|temperror|permerror|none)\b/i);
-        const dkimMatch = source.match(/(?:^|[;\s])dkim\s*=\s*(pass|fail|temperror|permerror|none)\b/i);
-        const dmarcMatch = source.match(/(?:^|[;\s])dmarc\s*=\s*(pass|fail|temperror|permerror|none)\b/i);
-        const compauthMatch = source.match(/(?:^|[;\s])compauth\s*=\s*(pass|fail|softpass|none)\b/i);
+      for (const headerName of authHeaderNames) {
+        for (let index = 0; index < (headers[headerName] || []).length; index += 1) {
+          result.records.push(parseRecord(headers[headerName][index], headerName, index));
+        }
+      }
+      for (let index = 0; index < (headers["received-spf"] || []).length; index += 1) {
+        const source = String(headers["received-spf"][index] || "");
+        const match = source.match(/^\s*(pass|fail|softfail|neutral|temperror|permerror|none)\b/i);
+        const record = { header: "received-spf", index: index, receiver: (source.match(/;\s*([^;]+)$/) || ["", "unknown"])[1].trim(), result: match ? match[1].toLowerCase() : "unknown", provenance: "unknown", raw: source };
+        result.receivedSpfRecords.push(record);
+        result.records.push({ header: "received-spf", index: index, validator: record.receiver, provenance: "unknown", spf: record.result, dkim: "unknown", dmarc: "unknown", arc: "unknown", compauth: "unknown", compauthReason: "", raw: source });
+      }
 
-        if (spfMatch && authKeywords.includes(spfMatch[1].toLowerCase())) {
-          result.spf = spfMatch[1].toLowerCase();
-        }
-        if (dkimMatch && authKeywords.includes(dkimMatch[1].toLowerCase())) {
-          result.dkim = dkimMatch[1].toLowerCase();
-        }
-        if (dmarcMatch && authKeywords.includes(dmarcMatch[1].toLowerCase())) {
-          result.dmarc = dmarcMatch[1].toLowerCase();
-        }
-        if (compauthMatch && authKeywords.includes(compauthMatch[1].toLowerCase())) {
-          result.compauth = compauthMatch[1].toLowerCase();
-        }
-        if (reason) {
-          result.compauthReason = reason[1];
+      const summaryRecords = result.records.filter(function (record) { return record.header !== "received-spf"; });
+      const recordsForSummary = summaryRecords.length ? summaryRecords : result.records;
+      for (const record of recordsForSummary) {
+        if (record.spf !== "unknown") result.spf = record.spf;
+        if (record.dkim !== "unknown") result.dkim = record.dkim;
+        if (record.dmarc !== "unknown") result.dmarc = record.dmarc;
+        if (record.compauth !== "unknown") {
+          result.compauth = record.compauth;
+          result.compauthReason = record.compauthReason;
         }
       }
 
@@ -1058,6 +1060,8 @@ If Python is not installed on this machine:
         sfv: extract("SFV", forefront),
         cat: extract("CAT", forefront),
         dir: extract("DIR", forefront),
+        ipv: extract("IPV", forefront),
+        sfty: extract("SFTY", forefront),
         bcl: bclHeader || extract("BCL", forefront),
         pcl: pclHeader || extract("PCL", forefront)
       };
@@ -1089,6 +1093,8 @@ If Python is not installed on this machine:
         return key.indexOf("x-ironport") === 0 || key.indexOf("x-threatscanner") === 0;
       }) || grayMailHeaderKeys.length > 0 || proxyWrappedHeaderKeys.length > 0;
       const grayMailDetected = /\bgray\b/i.test(ironPortGray || "") || grayMailHeaderKeys.length > 0;
+      const upstreamScl = firstHeaderValue(headers, "x-ms-exchange-organization-scl");
+      const customSpam = firstHeaderValue(headers, "x-customspam");
       return {
         ironPortPolicy: firstHeaderValue(headers, "x-ironport-mailflowpolicy"),
         threatScannerVerdict: firstHeaderValue(headers, "x-threatscannerverdict"),
@@ -1098,6 +1104,8 @@ If Python is not installed on this machine:
         grayMailHeaderKeys: grayMailHeaderKeys,
         proxyWrappedUrlFound: proxyWrappedHeaderKeys.length > 0,
         proxyWrappedHeaderKeys: proxyWrappedHeaderKeys,
+        upstreamScl: upstreamScl,
+        customSpam: customSpam,
         forefront: parseForefrontFields(headers)
       };
     }
@@ -1365,6 +1373,27 @@ If Python is not installed on this machine:
       return map[v] || "vendor-specific category value.";
     }
 
+    function microsoftVerdictText(fields) {
+      const cat = (fields.cat || "").toUpperCase();
+      const sfv = (fields.sfv || "").toUpperCase();
+      if (cat && cat !== "NONE") {
+        return "Microsoft Verdict: " + catMeaning(cat).replace(/\.$/, "");
+      }
+      const sfvLabels = {
+        NSPM: "Microsoft Filtering: Not Spam",
+        SPM: "Microsoft Filtering: Spam",
+        SKA: "Microsoft Filtering: Allow-list / Policy Handling",
+        SKB: "Microsoft Filtering: Block-list Handling",
+        SKI: "Microsoft Filtering: IP Allow Handling",
+        SKN: "Microsoft Filtering: Bypassed / Pre-classified",
+        SKS: "Microsoft Filtering: Pre-marked Spam",
+        SFE: "Microsoft Filtering: Safe Senders Handling",
+        BLK: "Microsoft Filtering: Blocked Senders Handling",
+        SKQ: "Microsoft Filtering: Quarantine / Release Handling"
+      };
+      return sfvLabels[sfv] || "Microsoft 365 Filtering Verdict: Available";
+    }
+
     function evaluateFindings(auth, envelope, hops, policySignals, mailOrigin) {
       const notes = [];
       let hasNonPassAuth = false;
@@ -1585,10 +1614,10 @@ If Python is not installed on this machine:
       if (v === "BLK") {
         return "bad";
       }
-      if (["SFE", "SKN"].includes(v)) {
+      if (["SFE"].includes(v)) {
         return "ok";
       }
-      if (["SKA", "SKQ"].includes(v)) {
+      if (["SKA", "SKI", "SKN", "SKQ"].includes(v)) {
         return "warn";
       }
       return "warn";
@@ -2267,6 +2296,7 @@ If Python is not installed on this machine:
       ui.authPills.innerHTML = "";
       ui.ironPortPills.innerHTML = "";
       ui.microsoftPills.innerHTML = "";
+      ui.googlePills.innerHTML = "";
       ui.details.innerHTML = "";
       ui.hopTable.innerHTML = "";
       ui.findings.innerHTML = "";
@@ -2453,7 +2483,31 @@ If Python is not installed on this machine:
 
       const ms = parsed.policySignals.forefront;
       let msCount = 0;
-      if (ms.scl) {
+      if (!ms.hasForefront && parsed.policySignals.upstreamScl) {
+        msCount += 1;
+        renderActionPill(ui.microsoftPills, "Microsoft 365 Filtering Verdict: Not Available", "muted", {
+          type: "jumpHeader",
+          hint: "An Exchange SCL value was detected, but no recipient-side Microsoft antispam report was found. The SCL is treated as upstream metadata and excluded from the recipient-side verdict.",
+          headerKeys: ["x-ms-exchange-organization-scl"],
+          fallbackId: "spamSection"
+        });
+        renderActionPill(ui.microsoftPills, "Upstream Exchange SCL: " + parsed.policySignals.upstreamScl, "muted", {
+          type: "jumpHeader",
+          hint: "Upstream only. This Exchange SCL is preserved as metadata and does not establish a recipient-side Microsoft filtering verdict.",
+          headerKeys: ["x-ms-exchange-organization-scl"],
+          fallbackId: "spamSection"
+        });
+      }
+      if (ms.hasForefront && (ms.sfv || ms.cat)) {
+        msCount += 1;
+        renderActionPill(ui.microsoftPills, microsoftVerdictText(ms), ms.cat && ms.cat !== "NONE" ? classifyCat(ms.cat) : classifySfv(ms.sfv), {
+          type: "jumpHeader",
+          hint: "Primary Microsoft verdict from recipient-side X-Forefront-Antispam-Report. " + (ms.cat ? "CAT: " + ms.cat + ". " : "") + (ms.sfv ? "SFV: " + ms.sfv + ". " : "") + (ms.scl ? "SCL is supporting information only." : ""),
+          headerKeys: ["x-forefront-antispam-report"],
+          fallbackId: "spamSection"
+        });
+      }
+      if (ms.scl && ms.hasForefront) {
         msCount += 1;
         renderActionPill(ui.microsoftPills, "SCL: " + ms.scl, classifyScl(ms.scl), {
           type: "jumpHeader",
@@ -2467,6 +2521,24 @@ If Python is not installed on this machine:
         renderActionPill(ui.microsoftPills, "DIR: " + ms.dir, "muted", {
           type: "jumpHeader",
           hint: "DIR is the Microsoft delivery direction recorded in X-Forefront-Antispam-Report.",
+          headerKeys: ["x-forefront-antispam-report"],
+          fallbackId: "spamSection"
+        });
+      }
+      if (ms.ipv) {
+        msCount += 1;
+        renderActionPill(ui.microsoftPills, "IPV: " + ms.ipv, "muted", {
+          type: "jumpHeader",
+          hint: "IPV is the Microsoft IP reputation result from X-Forefront-Antispam-Report.",
+          headerKeys: ["x-forefront-antispam-report"],
+          fallbackId: "spamSection"
+        });
+      }
+      if (ms.sfty) {
+        msCount += 1;
+        renderActionPill(ui.microsoftPills, "SFTY: " + ms.sfty, "muted", {
+          type: "jumpHeader",
+          hint: "SFTY is the Microsoft safety/threat classification context from X-Forefront-Antispam-Report.",
           headerKeys: ["x-forefront-antispam-report"],
           fallbackId: "spamSection"
         });
@@ -2504,6 +2576,15 @@ If Python is not installed on this machine:
           type: "jumpHeader",
           hint: catHelpText(ms.cat),
           headerKeys: ["x-ms-exchange-organization-antispam-report", "x-forefront-antispam-report"],
+          fallbackId: "spamSection"
+        });
+      }
+      if (iron.customSpam) {
+        msCount += 1;
+        renderActionPill(ui.microsoftPills, "Advanced Spam Filtering Triggered: " + iron.customSpam, "warn", {
+          type: "jumpHeader",
+          hint: "X-CustomSpam indicates that an advanced/custom spam filtering rule contributed metadata to the message classification.",
+          headerKeys: ["x-customspam"],
           fallbackId: "spamSection"
         });
       }
