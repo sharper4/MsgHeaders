@@ -1982,7 +1982,7 @@ If Python is not installed on this machine:
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "copy-icon-btn";
-      btn.textContent = "â§‰";
+      btn.textContent = "⧉";
       btn.title = "Copy " + label;
       btn.addEventListener("click", async function () {
         const copied = await copyToClipboard(value || "");
@@ -2479,9 +2479,11 @@ If Python is not installed on this machine:
         if (record.compauth && record.compauth !== "unknown") values.push("CompAuth " + record.compauth.toUpperCase());
         return values.join(", ");
       };
-      for (const record of authRecords.filter(function (record) { return record.header !== "received-spf"; })) {
+      for (const record of authRecords.filter(function (record) {
+        return record.header !== "received-spf" && (record.dkim !== "unknown" || record.dmarc !== "unknown" || record.arc !== "unknown" || record.compauth !== "unknown");
+      })) {
         const summary = authRecordSummary(record);
-        if (summary && (record.dkim !== "unknown" || record.dmarc !== "unknown" || record.arc !== "unknown" || record.compauth !== "unknown")) {
+        if (summary) {
           const primaryResult = record.dkim !== "unknown" ? record.dkim : record.dmarc !== "unknown" ? record.dmarc : record.arc !== "unknown" ? record.arc : record.compauth;
           const compactResult = primaryResult === "pass" ? "Pass" : primaryResult === "unknown" ? "Unknown" : "Fail";
           renderActionPill(ui.authPills, (record.validator || "Unknown") + ": " + compactResult, classifyResult(primaryResult), {
@@ -2620,15 +2622,6 @@ If Python is not installed on this machine:
         renderActionPill(ui.microsoftPills, "IPV: " + ms.ipv, microsoftSignalTone("IPV", ms.ipv), {
           type: "jumpHeader",
           hint: microsoftSignalHint("IPV", ms.ipv),
-          headerKeys: ["x-forefront-antispam-report"],
-          fallbackId: "spamSection"
-        });
-      }
-      if (ms.sfty) {
-        msCount += 1;
-        renderActionPill(ui.microsoftPills, "SFTY: " + ms.sfty, microsoftSignalTone("SFTY", ms.sfty), {
-          type: "jumpHeader",
-          hint: microsoftSignalHint("SFTY", ms.sfty),
           headerKeys: ["x-forefront-antispam-report"],
           fallbackId: "spamSection"
         });
