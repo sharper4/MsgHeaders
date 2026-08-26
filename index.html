@@ -667,7 +667,7 @@ If Python is not installed on this machine:
         </section>
 
         <section id="microsoftSectionBlock">
-          <h3 class="heading-line">Microsoft Threat Signals</h3>
+          <h3 class="heading-line">Receiving Gateway Signals</h3>
           <div id="microsoftPills" class="status-row"></div>
         </section>
 
@@ -873,7 +873,9 @@ If Python is not installed on this machine:
     function parseAuthResults(headers) {
       const authLines = [
         ...(headers["authentication-results"] || []),
-        ...(headers["auth-results"] || [])
+        ...(headers["auth-results"] || []),
+        ...(headers["received-spf"] || []),
+        ...(headers["arc-authentication-results"] || [])
       ];
 
       const result = {
@@ -885,11 +887,14 @@ If Python is not installed on this machine:
       };
 
       for (const line of authLines) {
-        const spf = line.match(/spf\s*=\s*([a-z]+)/i);
-        const dkim = line.match(/dkim\s*=\s*([a-z]+)/i);
-        const dmarc = line.match(/dmarc\s*=\s*([a-z]+)/i);
-        const compauth = line.match(/compauth\s*=\s*([a-z]+)/i);
-        const reason = line.match(/reason\s*=\s*([0-9]+)/i);
+        const source = String(line || "");
+        const spf = source.match(/(?:^|\s|;)\s*spf\s*=\s*([a-z]+)/i)
+          || source.match(/received-spf\s*:\s*([a-z]+)/i)
+          || source.match(/\bspf\s*=\s*([a-z]+)/i);
+        const dkim = source.match(/(?:^|\s|;)\s*dkim\s*=\s*([a-z]+)/i);
+        const dmarc = source.match(/(?:^|\s|;)\s*dmarc\s*=\s*([a-z]+)/i);
+        const compauth = source.match(/(?:^|\s|;)\s*compauth\s*=\s*([a-z]+)/i);
+        const reason = source.match(/reason\s*=\s*([0-9]+)/i);
 
         if (spf) {
           result.spf = spf[1].toLowerCase();
@@ -1065,6 +1070,9 @@ If Python is not installed on this machine:
         return key.indexOf("x-ironport") === 0 || key.indexOf("x-threatscanner") === 0;
       }) || grayMailHeaderKeys.length > 0 || proxyWrappedHeaderKeys.length > 0;
       const grayMailDetected = /\bgray\b/i.test(ironPortGray || "") || grayMailHeaderKeys.length > 0;
+      const googleSmtpSource = firstHeaderValue(headers, "x-google-smtp-source");
+      const receivedSpf = firstHeaderValue(headers, "received-spf");
+      const receiverHeaderKeys = matchingKeys(/received-spf|authentication-results|x-google-smtp-source|x-received|arc-authentication-results/i);
 
       return {
         ironPortPolicy: firstHeaderValue(headers, "x-ironport-mailflowpolicy"),
@@ -1075,6 +1083,9 @@ If Python is not installed on this machine:
         grayMailHeaderKeys: grayMailHeaderKeys,
         proxyWrappedUrlFound: proxyWrappedHeaderKeys.length > 0,
         proxyWrappedHeaderKeys: proxyWrappedHeaderKeys,
+        googleSmtpSource: googleSmtpSource,
+        receivedSpf: receivedSpf,
+        receiverHeaderKeys: receiverHeaderKeys,
         forefront: parseForefrontFields(headers)
       };
     }
@@ -1986,7 +1997,9 @@ If Python is not installed on this machine:
         ms.bcl ? exportPillHtml("BCL: " + ms.bcl, classifyBcl(ms.bcl)) : "",
         ms.pcl ? exportPillHtml("PCL: " + ms.pcl, classifyPcl(ms.pcl)) : "",
         ms.sfv ? exportPillHtml("SFV: " + ms.sfv, classifySfv(ms.sfv)) : "",
-        ms.cat ? exportPillHtml("CAT: " + ms.cat, classifyCat(ms.cat)) : ""
+        ms.cat ? exportPillHtml("CAT: " + ms.cat, classifyCat(ms.cat)) : "",
+        parsed.policySignals.receivedSpf ? exportPillHtml("Received-SPF: " + parsed.policySignals.receivedSpf, classifyResult(parsed.policySignals.receivedSpf)) : "",
+        parsed.policySignals.googleSmtpSource ? exportPillHtml("Google SMTP Source: " + parsed.policySignals.googleSmtpSource, "ok") : ""
       ].join("");
 
       const ironPortPills = [
@@ -2010,7 +2023,7 @@ If Python is not installed on this machine:
 
       const routingHtml =
         "<div style=\"margin:0 0 8px;\">" + authPills + "</div>" +
-        (microsoftPills ? "<div style=\"margin:8px 0 0;\"><div style=\"margin:0 0 6px;font-size:12px;font-weight:700;color:#486581;text-transform:uppercase;letter-spacing:0.4px;\">Microsoft Threat Signals</div>" + microsoftPills + "</div>" : "") +
+        (microsoftPills ? "<div style=\"margin:8px 0 0;\"><div style=\"margin:0 0 6px;font-size:12px;font-weight:700;color:#486581;text-transform:uppercase;letter-spacing:0.4px;\">Receiving Gateway Signals</div>" + microsoftPills + "</div>" : "") +
         (ironPortPills ? "<div style=\"margin:8px 0 0;\"><div style=\"margin:0 0 6px;font-size:12px;font-weight:700;color:#486581;text-transform:uppercase;letter-spacing:0.4px;\">IronPort Signals</div>" + ironPortPills + "</div>" : "") +
         "<div style=\"margin:12px 0 0;padding:10px 12px;border:1px solid #d8e3ee;border-radius:10px;background:#ffffff;color:#102a43;\"><strong>Route:</strong> " + escapeHtml(buildRouteStory(parsed.hops).join(" -> ")) + "</div>";
 
@@ -2441,6 +2454,24 @@ If Python is not installed on this machine:
           type: "jumpHeader",
           hint: catHelpText(ms.cat),
           headerKeys: ["x-ms-exchange-organization-antispam-report", "x-forefront-antispam-report"],
+          fallbackId: "spamSection"
+        });
+      }
+      if (parsed.policySignals.receivedSpf) {
+        msCount += 1;
+        renderActionPill(ui.microsoftPills, "Received-SPF: " + parsed.policySignals.receivedSpf, classifyResult(parsed.policySignals.receivedSpf), {
+          type: "jumpHeader",
+          hint: "The receiving gateway explicitly recorded the SPF result for the message. Click to jump to the sender's SPF evidence.",
+          headerKeys: ["received-spf"],
+          fallbackId: "spamSection"
+        });
+      }
+      if (parsed.policySignals.googleSmtpSource) {
+        msCount += 1;
+        renderActionPill(ui.microsoftPills, "Google SMTP Source: " + parsed.policySignals.googleSmtpSource, "ok", {
+          type: "jumpHeader",
+          hint: "This is the receiving gateway's internal source marker. It helps identify the signal path at the recipient side.",
+          headerKeys: ["x-google-smtp-source"],
           fallbackId: "spamSection"
         });
       }
