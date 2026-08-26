@@ -1040,9 +1040,6 @@ If Python is not installed on this machine:
 
     function parseForefrontFields(headers) {
       const forefront = firstHeaderValue(headers, "x-forefront-antispam-report");
-      const sclHeader = firstHeaderValue(headers, "x-ms-exchange-organization-scl");
-      const sfvHeader = firstHeaderValue(headers, "x-ms-exchange-organization-sfv");
-      const catHeader = firstHeaderValue(headers, "x-ms-exchange-organization-antispam-report");
       const bclHeader = firstHeaderValue(headers, "x-ms-exchange-organization-bcl") || firstHeaderValue(headers, "x-microsoft-antispam-bcl");
       const pclHeader = firstHeaderValue(headers, "x-ms-exchange-organization-pcl") || firstHeaderValue(headers, "x-microsoft-antispam-pcl");
 
@@ -1056,9 +1053,11 @@ If Python is not installed on this machine:
       }
 
       return {
-        scl: sclHeader || extract("SCL", forefront),
-        sfv: sfvHeader || extract("SFV", forefront),
-        cat: extract("CAT", forefront) || extract("CAT", catHeader),
+        hasForefront: Boolean(forefront),
+        scl: extract("SCL", forefront),
+        sfv: extract("SFV", forefront),
+        cat: extract("CAT", forefront),
+        dir: extract("DIR", forefront),
         bcl: bclHeader || extract("BCL", forefront),
         pcl: pclHeader || extract("PCL", forefront)
       };
@@ -2460,6 +2459,15 @@ If Python is not installed on this machine:
           type: "jumpHeader",
           hint: "SCL = Spam Confidence Level. Scale (Microsoft): -1 bypass/skip spam filtering; 0-1 non-spam; 5-6 spam; 7-9 high-confidence spam (2-4 are generally not stamped by spam filtering). Click to jump to related header.",
           headerKeys: ["x-ms-exchange-organization-scl", "x-forefront-antispam-report"],
+          fallbackId: "spamSection"
+        });
+      }
+      if (ms.dir) {
+        msCount += 1;
+        renderActionPill(ui.microsoftPills, "DIR: " + ms.dir, "muted", {
+          type: "jumpHeader",
+          hint: "DIR is the Microsoft delivery direction recorded in X-Forefront-Antispam-Report.",
+          headerKeys: ["x-forefront-antispam-report"],
           fallbackId: "spamSection"
         });
       }
