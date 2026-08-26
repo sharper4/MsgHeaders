@@ -1070,10 +1070,6 @@ If Python is not installed on this machine:
         return key.indexOf("x-ironport") === 0 || key.indexOf("x-threatscanner") === 0;
       }) || grayMailHeaderKeys.length > 0 || proxyWrappedHeaderKeys.length > 0;
       const grayMailDetected = /\bgray\b/i.test(ironPortGray || "") || grayMailHeaderKeys.length > 0;
-      const googleSmtpSource = firstHeaderValue(headers, "x-google-smtp-source");
-      const receivedSpf = firstHeaderValue(headers, "received-spf");
-      const receiverHeaderKeys = matchingKeys(/received-spf|authentication-results|x-google-smtp-source|x-received|arc-authentication-results/i);
-
       return {
         ironPortPolicy: firstHeaderValue(headers, "x-ironport-mailflowpolicy"),
         threatScannerVerdict: firstHeaderValue(headers, "x-threatscannerverdict"),
@@ -1083,9 +1079,6 @@ If Python is not installed on this machine:
         grayMailHeaderKeys: grayMailHeaderKeys,
         proxyWrappedUrlFound: proxyWrappedHeaderKeys.length > 0,
         proxyWrappedHeaderKeys: proxyWrappedHeaderKeys,
-        googleSmtpSource: googleSmtpSource,
-        receivedSpf: receivedSpf,
-        receiverHeaderKeys: receiverHeaderKeys,
         forefront: parseForefrontFields(headers)
       };
     }
@@ -1368,6 +1361,14 @@ If Python is not installed on this machine:
         if (value !== "pass") {
           hasNonPassAuth = true;
           notes.push(label + " result: " + value + " - " + authMeaning(key, value));
+        }
+      }
+
+      if (auth.spf === "pass") {
+        const fromDomain = getDomain(envelope.from);
+        const returnPathDomain = getDomain(envelope.returnPath);
+        if (fromDomain && returnPathDomain && fromDomain !== returnPathDomain) {
+          notes.push("SPF authenticated the sending IP, but the From domain and Return-Path domain do not align. This can happen with routed or forwarded mail, but it is not the same as an aligned SPF/DMARC pass.");
         }
       }
 
@@ -1997,9 +1998,7 @@ If Python is not installed on this machine:
         ms.bcl ? exportPillHtml("BCL: " + ms.bcl, classifyBcl(ms.bcl)) : "",
         ms.pcl ? exportPillHtml("PCL: " + ms.pcl, classifyPcl(ms.pcl)) : "",
         ms.sfv ? exportPillHtml("SFV: " + ms.sfv, classifySfv(ms.sfv)) : "",
-        ms.cat ? exportPillHtml("CAT: " + ms.cat, classifyCat(ms.cat)) : "",
-        parsed.policySignals.receivedSpf ? exportPillHtml("Received-SPF: " + parsed.policySignals.receivedSpf, classifyResult(parsed.policySignals.receivedSpf)) : "",
-        parsed.policySignals.googleSmtpSource ? exportPillHtml("Google SMTP Source: " + parsed.policySignals.googleSmtpSource, "ok") : ""
+        ms.cat ? exportPillHtml("CAT: " + ms.cat, classifyCat(ms.cat)) : ""
       ].join("");
 
       const ironPortPills = [
@@ -2454,24 +2453,6 @@ If Python is not installed on this machine:
           type: "jumpHeader",
           hint: catHelpText(ms.cat),
           headerKeys: ["x-ms-exchange-organization-antispam-report", "x-forefront-antispam-report"],
-          fallbackId: "spamSection"
-        });
-      }
-      if (parsed.policySignals.receivedSpf) {
-        msCount += 1;
-        renderActionPill(ui.microsoftPills, "Received-SPF: " + parsed.policySignals.receivedSpf, classifyResult(parsed.policySignals.receivedSpf), {
-          type: "jumpHeader",
-          hint: "The receiving gateway explicitly recorded the SPF result for the message. Click to jump to the sender's SPF evidence.",
-          headerKeys: ["received-spf"],
-          fallbackId: "spamSection"
-        });
-      }
-      if (parsed.policySignals.googleSmtpSource) {
-        msCount += 1;
-        renderActionPill(ui.microsoftPills, "Google SMTP Source: " + parsed.policySignals.googleSmtpSource, "ok", {
-          type: "jumpHeader",
-          hint: "This is the receiving gateway's internal source marker. It helps identify the signal path at the recipient side.",
-          headerKeys: ["x-google-smtp-source"],
           fallbackId: "spamSection"
         });
       }
