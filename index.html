@@ -918,7 +918,8 @@ If Python is not installed on this machine:
       for (let index = 0; index < (headers["received-spf"] || []).length; index += 1) {
         const source = String(headers["received-spf"][index] || "");
         const match = source.match(/^\s*(pass|fail|softfail|neutral|temperror|permerror|none)\b/i);
-        const record = { header: "received-spf", index: index, receiver: (source.match(/;\s*([^;]+)$/) || ["", "unknown"])[1].trim(), result: match ? match[1].toLowerCase() : "unknown", provenance: "unknown", raw: source };
+        const receiverMatch = source.match(/\(([^:;)]+)(?::|;|\))/);
+        const record = { header: "received-spf", index: index, receiver: receiverMatch ? receiverMatch[1].trim() : "unknown", result: match ? match[1].toLowerCase() : "unknown", provenance: "unknown", raw: source };
         result.receivedSpfRecords.push(record);
         result.records.push({ header: "received-spf", index: index, validator: record.receiver, provenance: "unknown", spf: record.result, dkim: "unknown", dmarc: "unknown", arc: "unknown", compauth: "unknown", compauthReason: "", raw: source });
       }
@@ -936,6 +937,45 @@ If Python is not installed on this machine:
       }
 
       return result;
+    }
+
+    function selectPrimaryAuth(auth, hops) {
+      const finalHop = hops && hops.length ? hops[hops.length - 1] : null;
+      const finalSystem = finalHop ? (finalHop.by + " " + finalHop.from).toLowerCase() : "";
+      const records = auth.records || [];
+      const matching = records.filter(function (record) {
+        if (record.header === "received-spf") {
+          return false;
+        }
+        const validator = (record.validator || "").toLowerCase().replace(/^\[|\]$/g, "");
+        const googleMatch = validator.includes("google") && finalSystem.includes("google");
+        const microsoftMatch = /(microsoft|outlook|office365|protection\.outlook)/i.test(validator) && /(microsoft|outlook|office365|protection\.outlook)/i.test(finalSystem);
+        return validator && validator !== "unknown" && finalSystem && (finalSystem.includes(validator) || googleMatch || microsoftMatch);
+      });
+      const primary = matching.length ? matching[matching.length - 1] : null;
+      if (primary) {
+        primary.provenance = "recipient-side";
+        if (primary.spf !== "unknown") auth.spf = primary.spf;
+        if (primary.dkim !== "unknown") auth.dkim = primary.dkim;
+        if (primary.dmarc !== "unknown") auth.dmarc = primary.dmarc;
+        if (primary.compauth !== "unknown") {
+          auth.compauth = primary.compauth;
+          auth.compauthReason = primary.compauthReason;
+        }
+      }
+      for (const record of records) {
+        if (record !== primary && record.provenance === "unknown") {
+          record.provenance = "upstream";
+        }
+      }
+      for (const record of (auth.receivedSpfRecords || [])) {
+        if (record.receiver && finalSystem && finalSystem.includes(record.receiver.toLowerCase())) {
+          record.provenance = "recipient-side";
+        } else if (record.provenance === "unknown") {
+          record.provenance = "upstream";
+        }
+      }
+      return auth;
     }
 
     function parseReceivedHop(receivedLine, hopIndex) {
@@ -1042,9 +1082,6 @@ If Python is not installed on this machine:
 
     function parseForefrontFields(headers) {
       const forefront = firstHeaderValue(headers, "x-forefront-antispam-report");
-      const bclHeader = firstHeaderValue(headers, "x-ms-exchange-organization-bcl") || firstHeaderValue(headers, "x-microsoft-antispam-bcl");
-      const pclHeader = firstHeaderValue(headers, "x-ms-exchange-organization-pcl") || firstHeaderValue(headers, "x-microsoft-antispam-pcl");
-
       function extract(field, source) {
         if (!source) {
           return "";
@@ -1062,8 +1099,8 @@ If Python is not installed on this machine:
         dir: extract("DIR", forefront),
         ipv: extract("IPV", forefront),
         sfty: extract("SFTY", forefront),
-        bcl: bclHeader || extract("BCL", forefront),
-        pcl: pclHeader || extract("PCL", forefront)
+        bcl: extract("BCL", forefront),
+        pcl: extract("PCL", forefront)
       };
     }
 
@@ -1377,7 +1414,8 @@ If Python is not installed on this machine:
       const cat = (fields.cat || "").toUpperCase();
       const sfv = (fields.sfv || "").toUpperCase();
       if (cat && cat !== "NONE") {
-        return "Microsoft Verdict: " + catMeaning(cat).replace(/\.$/, "");
+        const meaning = catMeaning(cat).replace(/\.$/, "");
+        return "Microsoft Verdict: " + meaning.charAt(0).toUpperCase() + meaning.slice(1);
       }
       const sfvLabels = {
         NSPM: "Microsoft Filtering: Not Spam",
@@ -1443,6 +1481,15 @@ If Python is not installed on this machine:
       const bcl = parseInt(forefront.bcl, 10);
       const sfv = (forefront.sfv || "").toUpperCase();
       const cat = (forefront.cat || "").toUpperCase();
+
+      if (forefront.hasForefront && (sfv || cat)) {
+        notes.push("Why this Microsoft verdict: X-Forefront-Antispam-Report was detected; " +
+          (sfv ? "SFV=" + sfv + ". " : "") +
+          (cat ? "CAT=" + cat + ". " : "") +
+          (forefront.scl ? "SCL=" + forefront.scl + " is supporting information." : ""));
+      } else if (!forefront.hasForefront && policySignals && policySignals.upstreamScl) {
+        notes.push("Why Microsoft 365 Filtering Verdict is Not Available: standalone X-MS-Exchange-Organization-SCL=" + policySignals.upstreamScl + " was treated as upstream metadata because no attributable recipient-side X-Forefront-Antispam-Report was found.");
+      }
 
       if (!Number.isNaN(scl) && scl >= 5) {
         notes.push("Spam signal detected: SCL " + scl + " indicates the message was scored as spam or high-confidence spam.");
@@ -2397,6 +2444,35 @@ If Python is not installed on this machine:
           fallbackId: "spamSection"
         }
       );
+      const authRecords = parsed.auth.records || [];
+      const authRecordSummary = function (record) {
+        const values = [];
+        if (record.spf && record.spf !== "unknown") values.push("SPF " + record.spf.toUpperCase());
+        if (record.dkim && record.dkim !== "unknown") values.push("DKIM " + record.dkim.toUpperCase());
+        if (record.dmarc && record.dmarc !== "unknown") values.push("DMARC " + record.dmarc.toUpperCase());
+        if (record.arc && record.arc !== "unknown") values.push("ARC " + record.arc.toUpperCase());
+        if (record.compauth && record.compauth !== "unknown") values.push("CompAuth " + record.compauth.toUpperCase());
+        return values.join(", ");
+      };
+      for (const record of authRecords.filter(function (record) { return record.header !== "received-spf"; })) {
+        const summary = authRecordSummary(record);
+        if (summary) {
+          renderActionPill(ui.authPills, (record.validator || "Unknown validator") + " Authentication: " + summary + " (" + record.provenance + ")", "muted", {
+            type: "jumpHeader",
+            hint: "Independent authentication evaluation preserved from " + record.header + ". Attribution is unknown unless the receiving system can be established from the surrounding route.",
+            headerKeys: [record.header],
+            fallbackId: "spamSection"
+          });
+        }
+      }
+      for (const record of (parsed.auth.receivedSpfRecords || [])) {
+        renderActionPill(ui.authPills, "Received-SPF #" + (record.index + 1) + ": " + record.result.toUpperCase() + " (" + record.provenance + ")", classifyResult(record.result), {
+          type: "jumpHeader",
+          hint: "Independent Received-SPF evaluation. Receiver: " + record.receiver + ". It is preserved separately and is not silently merged with other authentication systems.",
+          headerKeys: ["received-spf"],
+          fallbackId: "spamSection"
+        });
+      }
 
       const iron = parsed.policySignals;
       let ironCount = 0;
@@ -2695,8 +2771,8 @@ If Python is not installed on this machine:
         }
       }
 
-      const auth = parseAuthResults(headers);
       const hops = parseReceivedHops(headers);
+      const auth = selectPrimaryAuth(parseAuthResults(headers), hops);
       const envelope = extractEnvelopeData(headers);
       const mailOrigin = determineMailOrigin({ headers, envelope, hops });
       const groupedHeaders = splitHeaders(headers);
