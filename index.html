@@ -720,17 +720,9 @@ If Python is not installed on this machine:
   </main>
 
   <script>
-    function buildStampNow() {
-      const now = new Date();
-      const yyyy = String(now.getFullYear());
-      const mm = String(now.getMonth() + 1).padStart(2, "0");
-      const dd = String(now.getDate()).padStart(2, "0");
-      const hh = String(now.getHours()).padStart(2, "0");
-      const min = String(now.getMinutes()).padStart(2, "0");
-      return yyyy + "." + mm + "." + dd + "." + hh + min;
-    }
-
-    const APP_BUILD = buildStampNow();
+    // Keep this tied to the last published build, not the current date.
+    // Update it each time a production change is released.
+    const APP_BUILD = "2026.08.26.1800";
 
     const ui = {
       input: document.getElementById("headerInput"),
@@ -1222,9 +1214,24 @@ If Python is not installed on this machine:
       const authAsValues = headerValues(parsed.headers, "x-ms-exchange-organization-authas")
         .map(function (value) { return String(value || "").toLowerCase(); })
         .filter(Boolean);
-      const firstHop = parsed.hops && parsed.hops.length ? parsed.hops[0] : null;
+      const hops = parsed.hops || [];
+      const hopIps = hops
+        .map(function (hop) { return hop && hop.ip ? String(hop.ip).trim() : ""; })
+        .filter(Boolean);
+      const hasPublicRelay = hopIps.some(function (ip) { return Boolean(ip) && !isPrivateOrReservedIpv4(ip); });
+      const hasPrivateRelay = hopIps.some(function (ip) { return isPrivateOrReservedIpv4(ip); });
+      const firstHop = hops.length ? hops[0] : null;
       const firstHopIp = firstHop && firstHop.ip ? firstHop.ip : "";
       const firstHopFrom = (firstHop && firstHop.from ? firstHop.from : "").toLowerCase();
+      const hasInternalHost = firstHopFrom.includes(".local") || firstHopFrom.includes(".internal") || firstHopFrom.includes(".corp");
+
+      if (hasPublicRelay) {
+        return {
+          value: "External",
+          tone: "warn",
+          reason: "Received chain includes a public relay, which indicates the message crossed the Internet or an external SMTP service."
+        };
+      }
 
       if (xOriginIp) {
         if (isPrivateOrReservedIpv4(xOriginIp)) {
@@ -1247,6 +1254,10 @@ If Python is not installed on this machine:
           return { value: "Internal", tone: "ok", reason: "Earliest hop IP is private" };
         }
         return { value: "External", tone: "warn", reason: "Earliest hop IP is public" };
+      }
+
+      if (hasPrivateRelay || hasInternalHost) {
+        return { value: "Internal", tone: "ok", reason: "Received chain remains private/internal" };
       }
 
       if (firstHopFrom.includes(".local") || firstHopFrom.includes(".internal") || firstHopFrom.includes(".corp")) {
