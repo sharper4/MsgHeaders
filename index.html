@@ -735,7 +735,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.08.26.1110";
+    const APP_BUILD = "2026.08.26.1238";
 
     const ui = {
       input: document.getElementById("headerInput"),
@@ -925,7 +925,9 @@ If Python is not installed on this machine:
         result.records.push({ header: "received-spf", index: index, validator: record.receiver, provenance: "unknown", spf: record.result, dkim: "unknown", dmarc: "unknown", arc: "unknown", compauth: "unknown", compauthReason: "", raw: source });
       }
 
-      const summaryRecords = result.records.filter(function (record) { return record.header !== "received-spf"; });
+      const summaryRecords = result.records.filter(function (record) {
+        return record.header === "authentication-results" || record.header === "auth-results";
+      });
       const recordsForSummary = summaryRecords.length ? summaryRecords : result.records;
       for (const record of recordsForSummary) {
         if (record.spf !== "unknown") result.spf = record.spf;
@@ -940,9 +942,10 @@ If Python is not installed on this machine:
       return result;
     }
 
-    function selectPrimaryAuth(auth, hops) {
+    function selectPrimaryAuth(auth, hops, envelope, headers) {
       const finalHop = hops && hops.length ? hops[hops.length - 1] : null;
       const finalSystem = finalHop ? (finalHop.by + " " + finalHop.from).toLowerCase() : "";
+      const recipientText = [envelope && envelope.to, firstHeaderValue(headers || {}, "delivered-to")].join(" ").toLowerCase();
       const records = auth.records || [];
       const matching = records.filter(function (record) {
         if (record.header === "received-spf") {
@@ -950,8 +953,9 @@ If Python is not installed on this machine:
         }
         const validator = (record.validator || "").toLowerCase().replace(/^\[|\]$/g, "");
         const googleMatch = validator.includes("google") && finalSystem.includes("google");
+        const googleRecipientMatch = validator.includes("google") && /@gmail\.com\b|@googlemail\.com\b/.test(recipientText);
         const microsoftMatch = /(microsoft|outlook|office365|protection\.outlook)/i.test(validator) && /(microsoft|outlook|office365|protection\.outlook)/i.test(finalSystem);
-        return validator && validator !== "unknown" && finalSystem && (finalSystem.includes(validator) || googleMatch || microsoftMatch);
+        return validator && validator !== "unknown" && (finalSystem && (finalSystem.includes(validator) || googleMatch || microsoftMatch) || googleRecipientMatch);
       });
       matching.sort(function (left, right) {
         const leftDirect = left.header === "authentication-results" ? 1 : 0;
@@ -2761,8 +2765,8 @@ If Python is not installed on this machine:
       }
 
       const hops = parseReceivedHops(headers);
-      const auth = selectPrimaryAuth(parseAuthResults(headers), hops);
       const envelope = extractEnvelopeData(headers);
+      const auth = selectPrimaryAuth(parseAuthResults(headers), hops, envelope, headers);
       const mailOrigin = determineMailOrigin({ headers, envelope, hops });
       const groupedHeaders = splitHeaders(headers);
       const totalTransitMs = hops.length > 1 && typeof hops[0].timestampMs === "number" && typeof hops[hops.length - 1].timestampMs === "number"
