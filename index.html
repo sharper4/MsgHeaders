@@ -899,7 +899,9 @@ If Python is not installed on this machine:
       const resultNames = ["pass", "fail", "softfail", "softpass", "neutral", "temperror", "permerror", "none"];
       const authHeaderNames = ["authentication-results", "auth-results", "arc-authentication-results"];
       const parseRecord = function (source, headerName, index) {
-        const validatorMatch = source.match(/^\s*([^;\s]+)/);
+        const validatorMatch = headerName === "arc-authentication-results"
+          ? source.match(/;\s*([^;\s]+)/)
+          : source.match(/^\s*([^;\s]+)/);
         const validator = validatorMatch ? validatorMatch[1] : "unknown";
         const getResult = function (name) {
           const match = source.match(new RegExp("(?:^|[;\\s])" + name + "\\s*=\\s*(" + resultNames.join("|") + ")\\b", "i"));
@@ -950,6 +952,11 @@ If Python is not installed on this machine:
         const googleMatch = validator.includes("google") && finalSystem.includes("google");
         const microsoftMatch = /(microsoft|outlook|office365|protection\.outlook)/i.test(validator) && /(microsoft|outlook|office365|protection\.outlook)/i.test(finalSystem);
         return validator && validator !== "unknown" && finalSystem && (finalSystem.includes(validator) || googleMatch || microsoftMatch);
+      });
+      matching.sort(function (left, right) {
+        const leftDirect = left.header === "authentication-results" ? 1 : 0;
+        const rightDirect = right.header === "authentication-results" ? 1 : 0;
+        return leftDirect - rightDirect;
       });
       const primary = matching.length ? matching[matching.length - 1] : null;
       if (primary) {
