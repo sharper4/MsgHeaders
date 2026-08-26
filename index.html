@@ -666,9 +666,14 @@ If Python is not installed on this machine:
           <div id="ironPortPills" class="status-row"></div>
         </section>
 
-        <section id="microsoftSectionBlock">
+                <section id="microsoftSectionBlock">
           <h3 class="heading-line">Receiving Gateway Signals</h3>
           <div id="microsoftPills" class="status-row"></div>
+        </section>
+
+        <section id="googleSectionBlock">
+          <h3 class="heading-line">Google Security Signals</h3>
+          <div id="googlePills" class="status-row"></div>
         </section>
 
         <h3 class="heading-line">Routing</h3>
@@ -719,10 +724,19 @@ If Python is not installed on this machine:
     <div id="buildBadge" class="build-badge" aria-label="Build version">Build</div>
   </main>
 
-  <script>
-    // Keep this tied to the last published build, not the current date.
-    // Update it each time a production change is released.
-    const APP_BUILD = "2026.08.26.1800";
+    <script>
+    function buildStampNow() {
+      const now = new Date();
+      const yyyy = String(now.getFullYear());
+      const mm = String(now.getMonth() + 1).padStart(2, "0");
+      const dd = String(now.getDate()).padStart(2, "0");
+      const hh = String(now.getHours()).padStart(2, "0");
+      const min = String(now.getMinutes()).padStart(2, "0");
+      const ss = String(now.getSeconds()).padStart(2, "0");
+      return yyyy + "." + mm + "." + dd + "." + hh + min + ss;
+    }
+
+    const APP_BUILD = buildStampNow();
 
     const ui = {
       input: document.getElementById("headerInput"),
@@ -737,6 +751,7 @@ If Python is not installed on this machine:
       authPills: document.getElementById("authPills"),
       ironPortPills: document.getElementById("ironPortPills"),
       microsoftPills: document.getElementById("microsoftPills"),
+      googlePills: document.getElementById("googlePills"),
       details: document.getElementById("headerDetails"),
       findings: document.getElementById("findings"),
       hopTable: document.getElementById("hopTable"),
@@ -886,27 +901,30 @@ If Python is not installed on this machine:
         compauthReason: ""
       };
 
+      const authKeywords = ["pass", "fail", "softfail", "softpass", "neutral", "temperror", "permerror", "none"];
+
       for (const line of authLines) {
         const source = String(line || "");
-        const spf = source.match(/(?:^|\s|;)\s*spf\s*=\s*([a-z]+)/i)
-          || source.match(/received-spf\s*:\s*([a-z]+)/i)
-          || source.match(/\bspf\s*=\s*([a-z]+)/i);
-        const dkim = source.match(/(?:^|\s|;)\s*dkim\s*=\s*([a-z]+)/i);
-        const dmarc = source.match(/(?:^|\s|;)\s*dmarc\s*=\s*([a-z]+)/i);
-        const compauth = source.match(/(?:^|\s|;)\s*compauth\s*=\s*([a-z]+)/i);
         const reason = source.match(/reason\s*=\s*([0-9]+)/i);
 
-        if (spf) {
-          result.spf = spf[1].toLowerCase();
+        const spfMatch = source.match(/(?:^|[;\s])spf\s*=\s*(pass|fail|softfail|softpass|neutral|temperror|permerror|none)\b/i)
+          || source.match(/(?:^|\s)received-spf\s*:\s*(pass|fail|softfail|softpass|neutral|temperror|permerror|none)\b/i)
+          || source.match(/(?:^|[;\s])received-spf\s*=\s*(pass|fail|softfail|softpass|neutral|temperror|permerror|none)\b/i);
+        const dkimMatch = source.match(/(?:^|[;\s])dkim\s*=\s*(pass|fail|temperror|permerror|none)\b/i);
+        const dmarcMatch = source.match(/(?:^|[;\s])dmarc\s*=\s*(pass|fail|temperror|permerror|none)\b/i);
+        const compauthMatch = source.match(/(?:^|[;\s])compauth\s*=\s*(pass|fail|softpass|none)\b/i);
+
+        if (spfMatch && authKeywords.includes(spfMatch[1].toLowerCase())) {
+          result.spf = spfMatch[1].toLowerCase();
         }
-        if (dkim) {
-          result.dkim = dkim[1].toLowerCase();
+        if (dkimMatch && authKeywords.includes(dkimMatch[1].toLowerCase())) {
+          result.dkim = dkimMatch[1].toLowerCase();
         }
-        if (dmarc) {
-          result.dmarc = dmarc[1].toLowerCase();
+        if (dmarcMatch && authKeywords.includes(dmarcMatch[1].toLowerCase())) {
+          result.dmarc = dmarcMatch[1].toLowerCase();
         }
-        if (compauth) {
-          result.compauth = compauth[1].toLowerCase();
+        if (compauthMatch && authKeywords.includes(compauthMatch[1].toLowerCase())) {
+          result.compauth = compauthMatch[1].toLowerCase();
         }
         if (reason) {
           result.compauthReason = reason[1];
@@ -1861,12 +1879,12 @@ If Python is not installed on this machine:
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "copy-icon-btn";
-      btn.textContent = "⧉";
+      btn.textContent = "â§‰";
       btn.title = "Copy " + label;
       btn.addEventListener("click", async function () {
         const copied = await copyToClipboard(value || "");
         const original = btn.textContent;
-        btn.textContent = copied ? "✓" : "!";
+        btn.textContent = copied ? "âœ“" : "!";
         setTimeout(function () {
           btn.textContent = original;
         }, 850);
@@ -2409,6 +2427,22 @@ If Python is not installed on this machine:
       }
       ui.ironPortSectionBlock.style.display = ironCount ? "block" : "none";
 
+            const googleHasSignals = Boolean(parsed.headers["received-spf"] && parsed.headers["received-spf"].length)
+              || Boolean(parsed.headers["authentication-results"] && parsed.headers["authentication-results"].some(function (value) { return /google\.com/i.test(value); }))
+              || Boolean(parsed.headers["x-google-smtp-source"] && parsed.headers["x-google-smtp-source"].length);
+
+            if (googleHasSignals) {
+              const receivedSpfValue = firstHeaderValue(parsed.headers, "received-spf");
+              if (receivedSpfValue) {
+                renderPill(ui.googlePills, "Received-SPF: " + receivedSpfValue.split(";")[0].trim(), classifyResult(parsed.auth.spf), "Google-side SPF evidence from the receiver layer.");
+              }
+              if (parsed.headers["x-google-smtp-source"] && parsed.headers["x-google-smtp-source"].length) {
+                renderPill(ui.googlePills, "X-Google-SMTP-Source present", "muted", "Google mail infrastructure indicator is present in the headers.");
+              }
+            }
+
+            ui.googleSectionBlock.style.display = googleHasSignals ? "block" : "none";
+
       const ms = parsed.policySignals.forefront;
       let msCount = 0;
       if (ms.scl) {
@@ -2640,3 +2674,4 @@ If Python is not installed on this machine:
   </script>
 </body>
 </html>
+
