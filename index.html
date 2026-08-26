@@ -44,6 +44,16 @@ If Python is not installed on this machine:
         flex-shrink: 0;
       }
 
+      .copy-icon-btn svg {
+        width: 15px;
+        height: 15px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
       .copy-icon-btn.wide {
         width: auto;
         min-width: 24px;
@@ -725,18 +735,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    function buildStampNow() {
-      const now = new Date();
-      const yyyy = String(now.getFullYear());
-      const mm = String(now.getMonth() + 1).padStart(2, "0");
-      const dd = String(now.getDate()).padStart(2, "0");
-      const hh = String(now.getHours()).padStart(2, "0");
-      const min = String(now.getMinutes()).padStart(2, "0");
-      const ss = String(now.getSeconds()).padStart(2, "0");
-      return yyyy + "." + mm + "." + dd + "." + hh + min + ss;
-    }
-
-    const APP_BUILD = buildStampNow();
+    const APP_BUILD = "2026.08.26.1022";
 
     const ui = {
       input: document.getElementById("headerInput"),
@@ -1982,14 +1981,14 @@ If Python is not installed on this machine:
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "copy-icon-btn";
-      btn.textContent = "⧉";
+      btn.innerHTML = "<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"8\" y=\"8\" width=\"11\" height=\"11\" rx=\"1.5\"></rect><path d=\"M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8\"></path></svg>";
       btn.title = "Copy " + label;
       btn.addEventListener("click", async function () {
         const copied = await copyToClipboard(value || "");
-        const original = btn.textContent;
-        btn.textContent = copied ? "âœ“" : "!";
+        const original = btn.innerHTML;
+        btn.textContent = copied ? "Copied" : "Failed";
         setTimeout(function () {
-          btn.textContent = original;
+          btn.innerHTML = original;
         }, 850);
       });
       return btn;
@@ -2470,30 +2469,6 @@ If Python is not installed on this machine:
           fallbackId: "spamSection"
         }
       );
-      const authRecords = parsed.auth.records || [];
-      const authRecordSummary = function (record) {
-        const values = [];
-        if (record.dkim && record.dkim !== "unknown") values.push("DKIM " + record.dkim.toUpperCase());
-        if (record.dmarc && record.dmarc !== "unknown") values.push("DMARC " + record.dmarc.toUpperCase());
-        if (record.arc && record.arc !== "unknown") values.push("ARC " + record.arc.toUpperCase());
-        if (record.compauth && record.compauth !== "unknown") values.push("CompAuth " + record.compauth.toUpperCase());
-        return values.join(", ");
-      };
-      for (const record of authRecords.filter(function (record) {
-        return record.header !== "received-spf" && (record.dkim !== "unknown" || record.dmarc !== "unknown" || record.arc !== "unknown" || record.compauth !== "unknown");
-      })) {
-        const summary = authRecordSummary(record);
-        if (summary) {
-          const primaryResult = record.dkim !== "unknown" ? record.dkim : record.dmarc !== "unknown" ? record.dmarc : record.arc !== "unknown" ? record.arc : record.compauth;
-          const compactResult = primaryResult === "pass" ? "Pass" : primaryResult === "unknown" ? "Unknown" : "Fail";
-          renderActionPill(ui.authPills, (record.validator || "Unknown") + ": " + compactResult, classifyResult(primaryResult), {
-            type: "jumpHeader",
-            hint: "Authentication details: " + summary + ". Provenance: " + record.provenance + ". Raw source: " + record.header + ".",
-            headerKeys: [record.header],
-            fallbackId: "spamSection"
-          });
-        }
-      }
       const fromDomain = getDomain(parsed.envelope.from);
       const returnPathDomain = getDomain(parsed.envelope.returnPath);
       if (parsed.auth.spf !== "unknown" && fromDomain && returnPathDomain && fromDomain !== returnPathDomain) {
