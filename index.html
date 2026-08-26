@@ -2100,7 +2100,7 @@ If Python is not installed on this machine:
       const longestHop = getLongestHop(parsed.hops);
       const authPills = [
         exportPillHtml("Hops: " + parsed.hops.length, parsed.hops.length ? "ok" : "warn"),
-        exportPillHtml("End-to-End: " + formatDuration(parsed.totalTransitMs), parsed.totalTransitMs ? "ok" : "warn"),
+        exportPillHtml("End-to-End: " + formatDuration(parsed.totalTransitMs), typeof parsed.totalTransitMs === "number" ? "ok" : "warn"),
         exportPillHtml(
           "Longest Hop: " + (longestHop ? ("#" + longestHop.hop + " (" + formatDuration(longestHop.delayMs) + ")") : "n/a"),
           longestHop ? (hopDelayTone(longestHop.delayMs) || "warn") : "muted"
@@ -2110,7 +2110,7 @@ If Python is not installed on this machine:
         exportPillHtml("DMARC: " + parsed.auth.dmarc, classifyResult(parsed.auth.dmarc)),
         exportPillHtml("CompAuth: " + parsed.auth.compauth + (parsed.auth.compauthReason ? " (Reason " + parsed.auth.compauthReason + ")" : ""), classifyResult(parsed.auth.compauth)),
         exportPillHtml("Routing Hops: " + parsed.hops.length, parsed.hops.length ? "ok" : "warn"),
-        exportPillHtml("End-to-End: " + formatDuration(parsed.totalTransitMs), parsed.totalTransitMs ? "ok" : "warn")
+        exportPillHtml("End-to-End: " + formatDuration(parsed.totalTransitMs), typeof parsed.totalTransitMs === "number" ? "ok" : "warn")
       ].join("");
 
       const microsoftPills = [
@@ -2395,7 +2395,7 @@ If Python is not installed on this machine:
       renderActionPill(
         ui.routingPills,
         "End-to-End: " + formatDuration(parsed.totalTransitMs),
-        delaySeverityTone || (parsed.totalTransitMs ? "ok" : "warn"),
+        delaySeverityTone || (typeof parsed.totalTransitMs === "number" ? "ok" : "warn"),
         {
           type: "jumpHeader",
           hint: delaySeverityTone
