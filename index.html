@@ -1301,6 +1301,22 @@ If Python is not installed on this machine:
       const firstHopIp = firstHop && firstHop.ip ? firstHop.ip : "";
       const firstHopFrom = (firstHop && firstHop.from ? firstHop.from : "").toLowerCase();
       const hasInternalHost = firstHopFrom.includes(".local") || firstHopFrom.includes(".internal") || firstHopFrom.includes(".corp");
+      const hasExchangeTransportTrail = hops.some(function (hop) {
+        return /(?:^|[.\s])(?:outlook\.com|protection\.outlook\.com|exchange\.microsoft\.com)(?:$|[.\s])/i.test((hop.by || "") + " " + (hop.from || ""));
+      });
+      const authAsInternal = authAsValues.some(function (value) { return /\binternal\b/.test(value); });
+      const authAsExternal = authAsValues.some(function (value) { return /\banonymous\b|\bexternal\b|\bpartner\b/.test(value); });
+
+      if (authAsInternal && hasExchangeTransportTrail) {
+        if (xOriginIp && !isPrivateOrReservedIpv4(xOriginIp)) {
+          return { value: "Internal", tone: "ok", reason: "Exchange AuthAs=Internal; public X-Originating-IP can be an authenticated remote client" };
+        }
+        return { value: "Internal", tone: "ok", reason: "Exchange AuthAs=Internal is corroborated by the Exchange transport trail" };
+      }
+
+      if (authAsExternal && hasExchangeTransportTrail) {
+        return { value: "External", tone: "warn", reason: "Exchange AuthAs reports non-internal submission" };
+      }
 
       if (hasPublicRelay) {
         return {
@@ -1314,16 +1330,14 @@ If Python is not installed on this machine:
         if (isPrivateOrReservedIpv4(xOriginIp)) {
           return { value: "Internal", tone: "ok", reason: "X-Originating-IP is private" };
         }
+        if (authAsInternal) {
+          return { value: "Unknown", tone: "muted", reason: "AuthAs=Internal is not corroborated by an Exchange transport trail" };
+        }
         return { value: "External", tone: "warn", reason: "X-Originating-IP is public" };
       }
 
-      if (authAsValues.length) {
-        if (authAsValues.some(function (value) { return /\binternal\b/.test(value); })) {
-          return { value: "Internal", tone: "ok", reason: "AuthAs reports internal submission" };
-        }
-        if (authAsValues.some(function (value) { return /\banonymous\b|\bexternal\b|\bpartner\b/.test(value); })) {
-          return { value: "External", tone: "warn", reason: "AuthAs reports non-internal submission" };
-        }
+      if (authAsInternal) {
+        return { value: "Unknown", tone: "muted", reason: "AuthAs=Internal is present without Exchange transport corroboration" };
       }
 
       if (firstHopIp) {
@@ -1335,10 +1349,6 @@ If Python is not installed on this machine:
 
       if (hasPrivateRelay || hasInternalHost) {
         return { value: "Internal", tone: "ok", reason: "Received chain remains private/internal" };
-      }
-
-      if (firstHopFrom.includes(".local") || firstHopFrom.includes(".internal") || firstHopFrom.includes(".corp")) {
-        return { value: "Internal", tone: "ok", reason: "Earliest hop host appears internal" };
       }
 
       return { value: "Unknown", tone: "muted", reason: "No origin IP signal found" };
