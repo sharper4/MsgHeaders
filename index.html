@@ -590,6 +590,29 @@ If Python is not installed on this machine:
       user-select: none;
     }
 
+    .author-badge {
+      position: fixed;
+      left: 18px;
+      bottom: 18px;
+      z-index: 19;
+      border: 1px solid #355a7b;
+      background: rgba(9, 26, 40, 0.88);
+      color: #9fc5e3;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.7rem;
+      line-height: 1;
+      letter-spacing: 0.2px;
+      text-decoration: none;
+      user-select: none;
+    }
+
+    .author-badge:hover {
+      color: #d7ecff;
+      border-color: #5f8db2;
+      background: rgba(20, 44, 64, 0.95);
+    }
+
     @keyframes rise {
       from {
         opacity: 0;
@@ -732,10 +755,11 @@ If Python is not installed on this machine:
     </section>
     <button id="scrollTopBtn" class="floating-action is-hidden" type="button">Go To Top</button>
     <div id="buildBadge" class="build-badge" aria-label="Build version">Build</div>
+    <a id="authorBadge" class="author-badge" href="https://www.linkedin.com/in/scottharper4" target="_blank" rel="noopener noreferrer" aria-label="Written by Scott Harper">Written by Scott Harper</a>
   </main>
 
     <script>
-    const APP_BUILD = "2026.08.27.1111";
+    const APP_BUILD = "2026.08.27.1112";
 
     const ui = {
       input: document.getElementById("headerInput"),
@@ -764,7 +788,8 @@ If Python is not installed on this machine:
       otherHeaders: document.getElementById("otherHeaders"),
       toggleSpamHeaders: document.getElementById("toggleSpamHeaders"),
       toggleOtherHeaders: document.getElementById("toggleOtherHeaders"),
-      buildBadge: document.getElementById("buildBadge")
+      buildBadge: document.getElementById("buildBadge"),
+      authorBadge: document.getElementById("authorBadge")
     };
 
     ui.buildBadge.textContent = "Build " + APP_BUILD;
@@ -1259,6 +1284,78 @@ If Python is not installed on this machine:
       return parts.length === 2 ? parts[1].toLowerCase() : "";
     }
 
+    function domainsRoughlyAlign(leftDomain, rightDomain) {
+      const left = String(leftDomain || "").toLowerCase();
+      const right = String(rightDomain || "").toLowerCase();
+      if (!left || !right) {
+        return false;
+      }
+      return left === right || left.endsWith("." + right) || right.endsWith("." + left);
+    }
+
+    function extractDkimDomainFromAuthRecord(rawAuthLine) {
+      const line = String(rawAuthLine || "");
+      const match = line.match(/header\.d\s*=\s*([^;\s]+)/i);
+      return match ? match[1].trim().toLowerCase() : "";
+    }
+
+    function getDkimSigningDomain(auth, headers) {
+      const records = (auth && auth.records) || [];
+      for (const record of records) {
+        if (record && record.dkim === "pass") {
+          const d = extractDkimDomainFromAuthRecord(record.raw);
+          if (d) {
+            return d;
+          }
+        }
+      }
+      for (const record of records) {
+        if (record && record.dkim && record.dkim !== "unknown") {
+          const d = extractDkimDomainFromAuthRecord(record.raw);
+          if (d) {
+            return d;
+          }
+        }
+      }
+      for (const signatureLine of (headers && headers["dkim-signature"]) || []) {
+        const match = String(signatureLine || "").match(/\bd\s*=\s*([^;\s]+)/i);
+        if (match && match[1]) {
+          return match[1].trim().toLowerCase();
+        }
+      }
+      return "";
+    }
+
+    function getAlignmentSignals(auth, envelope, headers) {
+      const fromDomain = getDomain(envelope.from);
+      const returnPathDomain = getDomain(envelope.returnPath);
+      const dkimSigningDomain = getDkimSigningDomain(auth, headers);
+
+      const spfAlignment = auth.spf !== "unknown" && fromDomain && returnPathDomain
+        ? (domainsRoughlyAlign(fromDomain, returnPathDomain) ? "pass" : "fail")
+        : "unknown";
+
+      const dkimAlignment = auth.dkim !== "unknown" && fromDomain && dkimSigningDomain
+        ? (domainsRoughlyAlign(fromDomain, dkimSigningDomain) ? "pass" : "fail")
+        : "unknown";
+
+      const needsSpfSplit = auth.spf !== "unknown" && spfAlignment !== "unknown" &&
+        ((auth.spf === "pass" && spfAlignment === "fail") || (auth.spf !== "pass" && spfAlignment === "pass"));
+
+      const needsDkimSplit = auth.dkim !== "unknown" && dkimAlignment !== "unknown" &&
+        ((auth.dkim === "pass" && dkimAlignment === "fail") || (auth.dkim !== "pass" && dkimAlignment === "pass"));
+
+      return {
+        fromDomain,
+        returnPathDomain,
+        dkimSigningDomain,
+        spfAlignment,
+        dkimAlignment,
+        needsSpfSplit,
+        needsDkimSplit
+      };
+    }
+
     function isPrivateOrReservedIpv4(ip) {
       if (!ip) {
         return false;
@@ -1472,9 +1569,10 @@ If Python is not installed on this machine:
       return (meanings[field] && meanings[field][normalized]) || (field + " is a Microsoft diagnostic value; raw value: " + value + ".");
     }
 
-    function evaluateFindings(auth, envelope, hops, policySignals, mailOrigin) {
+    function evaluateFindings(auth, envelope, hops, policySignals, mailOrigin, headers) {
       const notes = [];
       let hasNonPassAuth = false;
+      const alignment = getAlignmentSignals(auth, envelope, headers);
 
       const authChecks = [
         ["SPF", "spf", auth.spf],
@@ -1490,11 +1588,19 @@ If Python is not installed on this machine:
         }
       }
 
-      if (auth.spf === "pass") {
-        const fromDomain = getDomain(envelope.from);
-        const returnPathDomain = getDomain(envelope.returnPath);
-        if (fromDomain && returnPathDomain && fromDomain !== returnPathDomain) {
-          notes.push("SPF authenticated the sending IP, but the From domain and Return-Path domain do not align. This can happen with routed or forwarded mail, but it is not the same as an aligned SPF/DMARC pass.");
+      if (alignment.needsSpfSplit) {
+        if (auth.spf === "pass" && alignment.spfAlignment === "fail") {
+          notes.push("SPF authentication passed, but SPF alignment failed. In plain English: the sending server is authorized for " + alignment.returnPathDomain + ", but the visible From domain is " + alignment.fromDomain + ". This can happen with third-party senders or forwarding, but if unexpected it may indicate spoofing risk.");
+        } else if (auth.spf !== "pass" && alignment.spfAlignment === "pass") {
+          notes.push("SPF alignment passed, but SPF authentication did not pass. In plain English: the From and Return-Path domains align (" + alignment.fromDomain + "), but the sender IP still failed or did not pass SPF authorization for that domain.");
+        }
+      }
+
+      if (alignment.needsDkimSplit) {
+        if (auth.dkim === "pass" && alignment.dkimAlignment === "fail") {
+          notes.push("DKIM authentication passed, but DKIM alignment failed. In plain English: the signature is valid for " + alignment.dkimSigningDomain + ", but the visible From domain is " + alignment.fromDomain + ", so DMARC alignment is not satisfied by DKIM alone.");
+        } else if (auth.dkim !== "pass" && alignment.dkimAlignment === "pass") {
+          notes.push("DKIM alignment passed, but DKIM authentication did not pass. In plain English: the signing domain aligns to the From domain (" + alignment.fromDomain + "), but the DKIM signature itself failed, was missing, or could not be validated.");
         }
       }
 
@@ -2456,13 +2562,24 @@ If Python is not installed on this machine:
         }
       );
 
-      renderActionPill(ui.authPills, "SPF: " + parsed.auth.spf, classifyResult(parsed.auth.spf), {
+      const alignment = getAlignmentSignals(parsed.auth, parsed.envelope, parsed.headers);
+
+      const spfPrimaryLabel = alignment.needsSpfSplit
+        ? "SPF authentication: " + parsed.auth.spf
+        : "SPF: " + parsed.auth.spf;
+
+      renderActionPill(ui.authPills, spfPrimaryLabel, classifyResult(parsed.auth.spf), {
         type: "jumpHeader",
         hint: "SPF = Sender Policy Framework. pass = sender identity validated; fail = high suspicion; softfail = investigate; none = common, but worth investigating. Click to jump to Authentication-Results.",
         headerKeys: ["authentication-results", "auth-results", "received-spf"],
         fallbackId: "spamSection"
       });
-      renderActionPill(ui.authPills, "DKIM: " + parsed.auth.dkim, classifyResult(parsed.auth.dkim), {
+
+      const dkimPrimaryLabel = alignment.needsDkimSplit
+        ? "DKIM authentication: " + parsed.auth.dkim
+        : "DKIM: " + parsed.auth.dkim;
+
+      renderActionPill(ui.authPills, dkimPrimaryLabel, classifyResult(parsed.auth.dkim), {
         type: "jumpHeader",
         hint: "DKIM = DomainKeys Identified Mail. pass = signature validated; fail = mismatch or potential tampering; none = unsigned. Click to jump to Authentication-Results.",
         headerKeys: ["authentication-results", "auth-results", "dkim-signature"],
@@ -2485,13 +2602,21 @@ If Python is not installed on this machine:
           fallbackId: "spamSection"
         }
       );
-      const fromDomain = getDomain(parsed.envelope.from);
-      const returnPathDomain = getDomain(parsed.envelope.returnPath);
-      if (parsed.auth.spf !== "unknown" && fromDomain && returnPathDomain && fromDomain !== returnPathDomain) {
-        renderActionPill(ui.authPills, "SPF alignment: Fail", "warn", {
+
+      if (alignment.needsSpfSplit) {
+        renderActionPill(ui.authPills, "SPF alignment: " + alignment.spfAlignment, classifyResult(alignment.spfAlignment), {
           type: "jumpHeader",
-          hint: "SPF authentication passed or failed independently from alignment. The From domain (" + fromDomain + ") and Return-Path domain (" + returnPathDomain + ") do not match.",
+          hint: "SPF alignment compares the visible From domain and Return-Path domain. From: " + alignment.fromDomain + "; Return-Path: " + alignment.returnPathDomain + ".",
           headerKeys: ["from", "return-path", "authentication-results", "received-spf"],
+          fallbackId: "spamSection"
+        });
+      }
+
+      if (alignment.needsDkimSplit) {
+        renderActionPill(ui.authPills, "DKIM alignment: " + alignment.dkimAlignment, classifyResult(alignment.dkimAlignment), {
+          type: "jumpHeader",
+          hint: "DKIM alignment compares the visible From domain and DKIM signing domain. From: " + alignment.fromDomain + "; DKIM d=: " + alignment.dkimSigningDomain + ".",
+          headerKeys: ["from", "authentication-results", "auth-results", "dkim-signature"],
           fallbackId: "spamSection"
         });
       }
@@ -2769,7 +2894,7 @@ If Python is not installed on this machine:
         ? (hops[hops.length - 1].timestampMs - hops[0].timestampMs)
         : null;
       const policySignals = extractPolicySignals(headers);
-      const findings = evaluateFindings(auth, envelope, hops, policySignals, mailOrigin);
+      const findings = evaluateFindings(auth, envelope, hops, policySignals, mailOrigin, headers);
       const partial = { headers, auth, hops, envelope, findings, groupedHeaders, totalTransitMs, policySignals };
       const narrativeSummary = buildNarrativeSummary(partial);
       return { headers, auth, hops, envelope, findings, groupedHeaders, totalTransitMs, policySignals, narrativeSummary };
