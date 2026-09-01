@@ -759,7 +759,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.08.27.1112";
+    const APP_BUILD = "2026.08.27.1113";
 
     const ui = {
       input: document.getElementById("headerInput"),
@@ -1354,6 +1354,29 @@ If Python is not installed on this machine:
         needsSpfSplit,
         needsDkimSplit
       };
+    }
+
+    function buildAuthPrimaryLabel(label, authResult, alignmentResult, needsSplit) {
+      const authValue = String(authResult || "unknown").toLowerCase();
+      const alignmentValue = String(alignmentResult || "unknown").toLowerCase();
+
+      if (needsSplit) {
+        return label + " authentication: " + authValue;
+      }
+
+      if (authValue === "pass") {
+        return label + ": pass";
+      }
+
+      if (authValue === "unknown") {
+        return label + ": unknown";
+      }
+
+      if (alignmentValue !== "unknown" && alignmentValue !== "pass") {
+        return label + ": " + authValue + " (auth + alignment)";
+      }
+
+      return label + ": " + authValue + " (authentication)";
     }
 
     function isPrivateOrReservedIpv4(ip) {
@@ -2564,9 +2587,7 @@ If Python is not installed on this machine:
 
       const alignment = getAlignmentSignals(parsed.auth, parsed.envelope, parsed.headers);
 
-      const spfPrimaryLabel = alignment.needsSpfSplit
-        ? "SPF authentication: " + parsed.auth.spf
-        : "SPF: " + parsed.auth.spf;
+      const spfPrimaryLabel = buildAuthPrimaryLabel("SPF", parsed.auth.spf, alignment.spfAlignment, alignment.needsSpfSplit);
 
       renderActionPill(ui.authPills, spfPrimaryLabel, classifyResult(parsed.auth.spf), {
         type: "jumpHeader",
@@ -2575,9 +2596,7 @@ If Python is not installed on this machine:
         fallbackId: "spamSection"
       });
 
-      const dkimPrimaryLabel = alignment.needsDkimSplit
-        ? "DKIM authentication: " + parsed.auth.dkim
-        : "DKIM: " + parsed.auth.dkim;
+      const dkimPrimaryLabel = buildAuthPrimaryLabel("DKIM", parsed.auth.dkim, alignment.dkimAlignment, alignment.needsDkimSplit);
 
       renderActionPill(ui.authPills, dkimPrimaryLabel, classifyResult(parsed.auth.dkim), {
         type: "jumpHeader",
