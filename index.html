@@ -759,7 +759,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.08.27.1113";
+    const APP_BUILD = "2026.08.27.1114";
 
     const ui = {
       input: document.getElementById("headerInput"),
@@ -2610,13 +2610,17 @@ If Python is not installed on this machine:
         headerKeys: ["authentication-results", "auth-results"],
         fallbackId: "spamSection"
       });
+      const compauthHint = "CompAuth = Composite Authentication (Microsoft). pass indicates overall identity confidence; fail indicates elevated suspicion." +
+        (parsed.auth.compauthReason ? " Reason code: " + parsed.auth.compauthReason + "." : "") +
+        " Click to jump to Authentication-Results.";
+
       renderActionPill(
         ui.authPills,
-        "CompAuth: " + parsed.auth.compauth + (parsed.auth.compauthReason ? " (Reason " + parsed.auth.compauthReason + ")" : ""),
+        "CompAuth: " + parsed.auth.compauth,
         classifyResult(parsed.auth.compauth),
         {
           type: "jumpHeader",
-          hint: "CompAuth = Composite Authentication (Microsoft). pass indicates overall identity confidence; fail indicates elevated suspicion. Click to jump to Authentication-Results.",
+          hint: compauthHint,
           headerKeys: ["authentication-results", "auth-results"],
           fallbackId: "spamSection"
         }
