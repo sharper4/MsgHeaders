@@ -760,7 +760,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.09.02.1524";
+    const APP_BUILD = "2026.09.02.1548";
 
     const ui = {
       input: document.getElementById("headerInput"),
@@ -1182,7 +1182,7 @@ If Python is not installed on this machine:
           "x-ironport-listener": "Gateway listener/profile that accepted the SMTP session.",
           "x-ironport-mailflowpolicy": "Gateway policy outcome for message flow handling.",
           "x-ironport-reputation": "Gateway sender/IP reputation signal used in policy evaluation. In many Cisco deployments this maps to SenderBase/SBRS-like scoring (typically around -10 to +10, where higher is better).",
-          "x-ironport-sendergroup": "Gateway sender-group classification tied to policy routing.",
+          "x-ironport-sendergroup": "Gateway sender-group classification tied to policy routing. UNKNOWNLIST/default-style groups are common catch-all classifications and are not inherently malicious on their own.",
           "x-threatscannerverdict": "Gateway threat scanning verdict field.",
           "x-threatscanner-verdict": "Gateway threat scanning verdict field."
         };
@@ -1216,8 +1216,14 @@ If Python is not installed on this machine:
           }
           return "muted";
         }
-        if (key === "x-ironport-sendergroup" && /unknown|suspect|blocked|quarantine/.test(value)) {
-          return "warn";
+        if (key === "x-ironport-sendergroup") {
+          if (/unknownlist|unknown|default|all/.test(value)) {
+            return "muted";
+          }
+          if (/suspect|blocked|quarantine|deny/.test(value)) {
+            return "warn";
+          }
+          return "ok";
         }
         if (key === "x-ironport-reputation") {
           const numeric = parseFloat(value);
