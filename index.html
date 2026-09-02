@@ -759,7 +759,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.09.02.1244";
+    const APP_BUILD = "2026.09.02.1302";
 
     const ui = {
       input: document.getElementById("headerInput"),
@@ -1985,9 +1985,6 @@ If Python is not installed on this machine:
       if (!source) {
         return false;
       }
-      if (source.includes("protection.outlook.com") || source.includes("outlook.office365.com")) {
-        return true;
-      }
       if (source.includes("exchange") || source.includes(".local") || source.includes("localhost")) {
         return true;
       }
@@ -2003,6 +2000,14 @@ If Python is not installed on this machine:
       return false;
     }
 
+    function isWeakInternalBoundarySignal(text) {
+      const source = (text || "").toLowerCase();
+      if (!source) {
+        return false;
+      }
+      return source.includes("protection.outlook.com") || source.includes("outlook.office365.com");
+    }
+
     function detectInboundStartNode(hops) {
       const routeHops = Array.isArray(hops) ? hops : [];
       for (const hop of routeHops) {
@@ -2012,6 +2017,25 @@ If Python is not installed on this machine:
           return classifyHostLabel(hop.by);
         }
       }
+
+      // Weak hosted-boundary signals (for example EOP hostnames) need an adjacent
+      // stronger internal indicator to avoid coloring the route too early.
+      for (let i = 0; i < routeHops.length; i += 1) {
+        const hop = routeHops[i];
+        const weakBy = isWeakInternalBoundarySignal(hop.by);
+        if (!weakBy) {
+          continue;
+        }
+        const nextHop = routeHops[i + 1];
+        const priorHop = routeHops[i - 1];
+        const hasNeighborStrongInternal =
+          (nextHop && (isInternalMailInfrastructure(nextHop.by) || isInternalMailInfrastructure(nextHop.from))) ||
+          (priorHop && (isInternalMailInfrastructure(priorHop.by) || isInternalMailInfrastructure(priorHop.from)));
+        if (hasNeighborStrongInternal) {
+          return classifyHostLabel(hop.by);
+        }
+      }
+
       for (const hop of routeHops) {
         if (isInternalMailInfrastructure(hop.by)) {
           return classifyHostLabel(hop.by);
@@ -2042,9 +2066,15 @@ If Python is not installed on this machine:
     }
 
     function renderRouteStory(routeNodes, inboundStartNode) {
-      const pivot = inboundStartNode ? routeNodes.findIndex(function (node) {
-        return node === inboundStartNode;
-      }) : -1;
+      let pivot = -1;
+      if (inboundStartNode) {
+        for (let i = routeNodes.length - 1; i >= 0; i -= 1) {
+          if (routeNodes[i] === inboundStartNode) {
+            pivot = i;
+            break;
+          }
+        }
+      }
 
       return routeNodes.map(function (node, index) {
         const safeNode = escapeHtml(node);
