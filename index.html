@@ -697,6 +697,7 @@ If Python is not installed on this machine:
         <section id="gatewaySectionBlock">
           <h3 class="heading-line">Gateway Security Signals</h3>
           <div id="gatewayPills" class="status-row"></div>
+          <div id="gatewayTrustNote" class="hint"></div>
         </section>
 
                 <section id="microsoftSectionBlock">
@@ -759,7 +760,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.09.02.1327";
+    const APP_BUILD = "2026.09.02.1354";
 
     const ui = {
       input: document.getElementById("headerInput"),
@@ -773,6 +774,7 @@ If Python is not installed on this machine:
       routingPills: document.getElementById("routingPills"),
       authPills: document.getElementById("authPills"),
       gatewayPills: document.getElementById("gatewayPills"),
+      gatewayTrustNote: document.getElementById("gatewayTrustNote"),
       microsoftPills: document.getElementById("microsoftPills"),
       googlePills: document.getElementById("googlePills"),
       details: document.getElementById("headerDetails"),
@@ -1157,6 +1159,81 @@ If Python is not installed on this machine:
         return Array.from(new Set(out));
       }
 
+      function friendlyGatewayHeaderName(key) {
+        return String(key || "")
+          .replace(/^x-/i, "")
+          .replace(/-/g, " ")
+          .replace(/\b([a-z])/g, function (m) { return m.toUpperCase(); });
+      }
+
+      function summarizeTelemetryValue(value, maxLen) {
+        const limit = typeof maxLen === "number" ? maxLen : 72;
+        const text = String(value || "").replace(/\s+/g, " ").trim();
+        if (text.length <= limit) {
+          return text;
+        }
+        return text.slice(0, limit - 3) + "...";
+      }
+
+      function gatewayTelemetryHelp(key) {
+        const help = {
+          "x-ironport-av": "Gateway anti-virus scan metadata (vendor-specific engine/version telemetry).",
+          "x-ironport-listener": "Gateway listener/profile that accepted the SMTP session.",
+          "x-ironport-mailflowpolicy": "Gateway policy outcome for message flow handling.",
+          "x-ironport-mid": "Gateway internal message identifier for trace correlation.",
+          "x-ironport-remoteip": "Remote IP observed by the gateway during SMTP intake.",
+          "x-ironport-reputation": "Gateway sender/IP reputation signal used in policy evaluation.",
+          "x-ironport-sendergroup": "Gateway sender-group classification tied to policy routing.",
+          "x-threatscannerverdict": "Gateway threat scanning verdict field."
+        };
+        return help[key] || "Vendor-specific gateway telemetry header (non-RFC standard). Interpret with vendor documentation and route context.";
+      }
+
+      function gatewayTelemetryTone(entryKey, rawValue) {
+        const key = String(entryKey || "").toLowerCase();
+        const value = String(rawValue || "").toLowerCase();
+        if (key === "x-ironport-mailflowpolicy") {
+          return classifyGatewayPolicy(rawValue);
+        }
+        if (key === "x-threatscannerverdict") {
+          return classifyThreatScannerVerdict(rawValue);
+        }
+        if (key === "x-ironport-sendergroup" && /unknown|suspect|blocked|quarantine/.test(value)) {
+          return "warn";
+        }
+        if (key === "x-ironport-reputation" && /poor|bad|low/.test(value)) {
+          return "warn";
+        }
+        return "muted";
+      }
+
+      function collectGatewayTelemetryEntries(headers) {
+        const telemetryKeys = Object.keys(headers || {})
+          .filter(function (key) {
+            return /^(x-(ironport|threatscanner|proofpoint|mimecast|barracuda))/i.test(String(key || ""));
+          })
+          .sort();
+
+        const entries = [];
+        for (const key of telemetryKeys) {
+          const values = headers[key] || [];
+          const rawValue = String(values[0] || "").trim();
+          if (!rawValue) {
+            continue;
+          }
+          const lowered = key.toLowerCase();
+          entries.push({
+            key: lowered,
+            label: friendlyGatewayHeaderName(key),
+            value: summarizeTelemetryValue(rawValue),
+            rawValue: rawValue,
+            hint: gatewayTelemetryHelp(lowered),
+            tone: gatewayTelemetryTone(lowered, rawValue)
+          });
+        }
+        return entries.slice(0, 10);
+      }
+
       function detectGatewayVendors() {
         const vendorScores = {
           IronPort: 0,
@@ -1214,13 +1291,15 @@ If Python is not installed on this machine:
       const upstreamScl = firstHeaderValue(headers, "x-ms-exchange-organization-scl");
       const customSpam = firstHeaderValue(headers, "x-customspam");
       const detectedGateway = detectGatewayVendors();
+      const gatewayTelemetry = collectGatewayTelemetryEntries(headers);
       return {
         gatewayPolicy: firstHeaderValue(headers, "x-ironport-mailflowpolicy"),
         threatScannerVerdict: firstHeaderValue(headers, "x-threatscannerverdict"),
-        hasGatewayContext: hasGatewayContext,
+        hasGatewayContext: hasGatewayContext || gatewayTelemetry.length > 0,
         gatewayVendors: detectedGateway.vendors,
         primaryGatewayVendor: detectedGateway.primary,
         gatewayVendorConfidence: detectedGateway.confidence,
+        gatewayTelemetry: gatewayTelemetry,
         grayMailDetected: grayMailDetected,
         grayMailValue: gatewayGray,
         grayMailHeaderKeys: grayMailHeaderKeys,
@@ -2368,6 +2447,12 @@ If Python is not installed on this machine:
       if (parsed.policySignals.primaryGatewayVendor) {
         lines.push("Gateway Vendor: " + parsed.policySignals.primaryGatewayVendor);
       }
+      const telemetryItems = (parsed.policySignals.gatewayTelemetry || []).map(function (entry) {
+        return entry.label;
+      });
+      if (telemetryItems.length) {
+        lines.push("Gateway Telemetry Headers: " + telemetryItems.join(", "));
+      }
       if (parsed.policySignals.threatScannerVerdict) {
         lines.push("ThreatScannerVerdict: " + parsed.policySignals.threatScannerVerdict);
       }
@@ -2445,6 +2530,9 @@ If Python is not installed on this machine:
 
       const gatewayPills = [
         parsed.policySignals.primaryGatewayVendor ? exportPillHtml("Gateway Vendor: " + parsed.policySignals.primaryGatewayVendor, "ok") : "",
+        (parsed.policySignals.gatewayTelemetry && parsed.policySignals.gatewayTelemetry.length)
+          ? exportPillHtml("Vendor Telemetry Headers: " + parsed.policySignals.gatewayTelemetry.length, "muted")
+          : "",
         parsed.policySignals.gatewayPolicy ? exportPillHtml("MailFlowPolicy: " + parsed.policySignals.gatewayPolicy, classifyGatewayPolicy(parsed.policySignals.gatewayPolicy)) : "",
         parsed.policySignals.threatScannerVerdict ? exportPillHtml("ThreatScannerVerdict: " + parsed.policySignals.threatScannerVerdict, classifyThreatScannerVerdict(parsed.policySignals.threatScannerVerdict)) : "",
         exportPillHtml("GrayMail: " + (parsed.policySignals.grayMailDetected ? "Detected" : "Not Detected"), parsed.policySignals.grayMailDetected ? "warn" : "ok"),
@@ -2690,6 +2778,7 @@ If Python is not installed on this machine:
       ui.routingPills.innerHTML = "";
       ui.authPills.innerHTML = "";
       ui.gatewayPills.innerHTML = "";
+      ui.gatewayTrustNote.textContent = "";
       ui.microsoftPills.innerHTML = "";
       ui.googlePills.innerHTML = "";
       ui.details.innerHTML = "";
@@ -2703,6 +2792,7 @@ If Python is not installed on this machine:
 
       const delaySeverityTone = mostSevereDelayTone(parsed.hops);
       const mailOrigin = determineMailOrigin(parsed);
+      const inboundStartHop = detectInboundStartHop(parsed.hops, parsed.policySignals);
 
       renderActionPill(
         ui.routingPills,
@@ -2824,6 +2914,9 @@ If Python is not installed on this machine:
 
       const gateway = parsed.policySignals;
       let gatewayCount = 0;
+      const gatewayTelemetryList = (gateway.gatewayTelemetry || []).filter(function (entry) {
+        return !["x-ironport-mailflowpolicy", "x-threatscannerverdict", "x-ironport-gray"].includes(entry.key);
+      });
       if (gateway.primaryGatewayVendor) {
         gatewayCount += 1;
         renderActionPill(
@@ -2895,6 +2988,27 @@ If Python is not installed on this machine:
             fallbackId: "spamSection"
           }
         );
+      }
+
+      for (const telemetry of gatewayTelemetryList) {
+        gatewayCount += 1;
+        renderActionPill(
+          ui.gatewayPills,
+          telemetry.label + ": " + telemetry.value,
+          telemetry.tone || "muted",
+          {
+            type: "jumpHeader",
+            hint: telemetry.hint + " Raw value: " + telemetry.rawValue,
+            headerKeys: [telemetry.key],
+            fallbackId: "spamSection"
+          }
+        );
+      }
+
+      if (gatewayCount) {
+        ui.gatewayTrustNote.textContent = inboundStartHop > 0
+          ? ("Vendor-specific telemetry is present. Confidence is higher because gateway ingress was identified at hop #" + inboundStartHop + ".")
+          : "Vendor-specific telemetry is present, but ingress hop could not be confidently identified. Treat as supporting context.";
       }
       ui.gatewaySectionBlock.style.display = gatewayCount ? "block" : "none";
 
@@ -2998,7 +3112,6 @@ If Python is not installed on this machine:
       ui.microsoftSectionBlock.style.display = msCount ? "block" : "none";
 
       const routeNodes = buildRouteStoryNodes(parsed.hops);
-      const inboundStartHop = detectInboundStartHop(parsed.hops, parsed.policySignals);
       if (routeNodes.length) {
         ui.routeInline.innerHTML = "<strong>Route:</strong> " + renderRouteStory(routeNodes, inboundStartHop);
       } else {
@@ -3142,6 +3255,7 @@ If Python is not installed on this machine:
       ui.routingPills.innerHTML = "";
       ui.authPills.innerHTML = "";
       ui.gatewayPills.innerHTML = "";
+      ui.gatewayTrustNote.textContent = "";
       ui.microsoftPills.innerHTML = "";
       ui.details.innerHTML = "";
       ui.hopTable.innerHTML = "";
