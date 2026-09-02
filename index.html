@@ -759,7 +759,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.08.27.1115";
+    const APP_BUILD = "2026.09.02.1205";
 
     const ui = {
       input: document.getElementById("headerInput"),
@@ -1893,7 +1893,7 @@ If Python is not installed on this machine:
         return "Mail Transfer Agent";
       }
       if (source.includes("iphmx.com")) {
-        return "IronPort Device";
+        return "Email Security Gateway";
       }
       if (source.includes("cisco.com")) {
         return "Cisco (Vendor)";
@@ -1908,7 +1908,7 @@ If Python is not installed on this machine:
         return "Proofpoint";
       }
       if (source.includes("ironport")) {
-        return "Deloitte IronPort";
+        return "Cisco Email Security";
       }
       if (source.includes("protection.outlook.com") || source.includes("outlook.com")) {
         return "EOP (Exchange Online Protection)";
@@ -1922,6 +1922,46 @@ If Python is not installed on this machine:
 
       const token = (text || "").split(/[\s(]/)[0];
       return token || "Mail Transfer Agent";
+    }
+
+    function isInternalMailInfrastructure(text) {
+      const source = (text || "").toLowerCase();
+      if (!source) {
+        return false;
+      }
+      if (source.includes("protection.outlook.com") || source.includes("outlook.office365.com")) {
+        return true;
+      }
+      if (source.includes("exchange") || source.includes(".local") || source.includes("localhost")) {
+        return true;
+      }
+      if (/\b10(?:\.\d{1,3}){3}\b/.test(source)) {
+        return true;
+      }
+      if (/\b192\.168(?:\.\d{1,3}){2}\b/.test(source)) {
+        return true;
+      }
+      if (/\b172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}\b/.test(source)) {
+        return true;
+      }
+      return false;
+    }
+
+    function detectInboundStartNode(hops) {
+      const routeHops = Array.isArray(hops) ? hops : [];
+      for (const hop of routeHops) {
+        const fromInternal = isInternalMailInfrastructure(hop.from);
+        const byInternal = isInternalMailInfrastructure(hop.by);
+        if (byInternal && !fromInternal) {
+          return classifyHostLabel(hop.by);
+        }
+      }
+      for (const hop of routeHops) {
+        if (isInternalMailInfrastructure(hop.by)) {
+          return classifyHostLabel(hop.by);
+        }
+      }
+      return "";
     }
 
     function buildRouteStory(hops) {
@@ -1945,10 +1985,10 @@ If Python is not installed on this machine:
       return classifyHostLabel(hop.from) + " -> " + classifyHostLabel(hop.by);
     }
 
-    function renderRouteStory(routeNodes) {
-      const pivot = routeNodes.findIndex(function (node) {
-        return node === "IronPort Device";
-      });
+    function renderRouteStory(routeNodes, inboundStartNode) {
+      const pivot = inboundStartNode ? routeNodes.findIndex(function (node) {
+        return node === inboundStartNode;
+      }) : -1;
 
       return routeNodes.map(function (node, index) {
         const safeNode = escapeHtml(node);
@@ -2804,8 +2844,9 @@ If Python is not installed on this machine:
       ui.microsoftSectionBlock.style.display = msCount ? "block" : "none";
 
       const routeNodes = buildRouteStory(parsed.hops);
+      const inboundStartNode = detectInboundStartNode(parsed.hops);
       if (routeNodes.length) {
-        ui.routeInline.innerHTML = "<strong>Route:</strong> " + renderRouteStory(routeNodes);
+        ui.routeInline.innerHTML = "<strong>Route:</strong> " + renderRouteStory(routeNodes, inboundStartNode);
       } else {
         ui.routeInline.textContent = "Route: n/a";
       }
