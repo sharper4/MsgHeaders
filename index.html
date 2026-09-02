@@ -760,7 +760,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.09.02.1418";
+    const APP_BUILD = "2026.09.02.1436";
 
     const ui = {
       input: document.getElementById("headerInput"),
@@ -1177,6 +1177,7 @@ If Python is not installed on this machine:
 
       function gatewayTelemetryHelp(key) {
         const help = {
+          "x-ironport-anti-spam-filtered": "Indicates whether the gateway anti-spam engine filtered/evaluated the message. True/Yes usually means anti-spam checks ran.",
           "x-ironport-listener": "Gateway listener/profile that accepted the SMTP session.",
           "x-ironport-mailflowpolicy": "Gateway policy outcome for message flow handling.",
           "x-ironport-reputation": "Gateway sender/IP reputation signal used in policy evaluation. In many Cisco deployments this maps to SenderBase/SBRS-like scoring (typically around -10 to +10, where higher is better).",
@@ -1189,6 +1190,15 @@ If Python is not installed on this machine:
       function gatewayTelemetryTone(entryKey, rawValue) {
         const key = String(entryKey || "").toLowerCase();
         const value = String(rawValue || "").toLowerCase();
+        if (key === "x-ironport-anti-spam-filtered") {
+          if (/^(true|yes|y|1)$/i.test(String(rawValue || "").trim())) {
+            return "ok";
+          }
+          if (/^(false|no|n|0)$/i.test(String(rawValue || "").trim())) {
+            return "warn";
+          }
+          return "muted";
+        }
         if (key === "x-ironport-mailflowpolicy") {
           return classifyGatewayPolicy(rawValue);
         }
@@ -1235,9 +1245,6 @@ If Python is not installed on this machine:
           .filter(function (key) {
             const lowered = String(key || "").toLowerCase();
             if (suppressedTelemetryKeys.has(lowered)) {
-              return false;
-            }
-            if (/anti\s*spam\s*filtered/i.test(lowered)) {
               return false;
             }
             return /^(x-(ironport|threatscanner|proofpoint|mimecast|barracuda))/i.test(lowered);
