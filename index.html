@@ -759,7 +759,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.09.02.1302";
+    const APP_BUILD = "2026.09.02.1327";
 
     const ui = {
       input: document.getElementById("headerInput"),
@@ -2008,13 +2008,59 @@ If Python is not installed on this machine:
       return source.includes("protection.outlook.com") || source.includes("outlook.office365.com");
     }
 
-    function detectInboundStartNode(hops) {
+    function gatewayHostMatchesVendor(hostText, vendorName) {
+      const host = String(hostText || "").toLowerCase();
+      const vendor = String(vendorName || "");
+      if (!host || !vendor) {
+        return false;
+      }
+      if (vendor === "IronPort") {
+        return host.includes("iphmx.com") || host.includes("ironport") || host.includes("esa");
+      }
+      if (vendor === "Proofpoint") {
+        return host.includes("proofpoint") || host.includes("pphosted") || /\bpps\b/.test(host);
+      }
+      if (vendor === "Mimecast") {
+        return host.includes("mimecast");
+      }
+      if (vendor === "Barracuda") {
+        return host.includes("barracuda");
+      }
+      return false;
+    }
+
+    function detectInboundStartHop(hops, policySignals) {
       const routeHops = Array.isArray(hops) ? hops : [];
+      const vendors = Array.isArray(policySignals && policySignals.gatewayVendors)
+        ? policySignals.gatewayVendors.filter(function (v) {
+            return ["IronPort", "Proofpoint", "Mimecast", "Barracuda"].includes(v);
+          })
+        : [];
+
+      // Prefer explicit vendor ingress signal from the actual hop path.
+      for (const hop of routeHops) {
+        const hasGatewayBy = vendors.some(function (v) { return gatewayHostMatchesVendor(hop.by, v); });
+        const hasGatewayFrom = vendors.some(function (v) { return gatewayHostMatchesVendor(hop.from, v); });
+        const fromInternal = isInternalMailInfrastructure(hop.from);
+        if (hasGatewayBy && !hasGatewayFrom && !fromInternal) {
+          return hop.hop;
+        }
+      }
+
+      // If vendor is known but transition context is incomplete, anchor to first by-side vendor hop.
+      for (const hop of routeHops) {
+        const hasGatewayBy = vendors.some(function (v) { return gatewayHostMatchesVendor(hop.by, v); });
+        if (hasGatewayBy) {
+          return hop.hop;
+        }
+      }
+
+      // Fallback: strong internal transition.
       for (const hop of routeHops) {
         const fromInternal = isInternalMailInfrastructure(hop.from);
         const byInternal = isInternalMailInfrastructure(hop.by);
         if (byInternal && !fromInternal) {
-          return classifyHostLabel(hop.by);
+          return hop.hop;
         }
       }
 
@@ -2032,53 +2078,55 @@ If Python is not installed on this machine:
           (nextHop && (isInternalMailInfrastructure(nextHop.by) || isInternalMailInfrastructure(nextHop.from))) ||
           (priorHop && (isInternalMailInfrastructure(priorHop.by) || isInternalMailInfrastructure(priorHop.from)));
         if (hasNeighborStrongInternal) {
-          return classifyHostLabel(hop.by);
+          return hop.hop;
         }
       }
 
       for (const hop of routeHops) {
         if (isInternalMailInfrastructure(hop.by)) {
-          return classifyHostLabel(hop.by);
+          return hop.hop;
         }
       }
-      return "";
+      return 0;
     }
 
-    function buildRouteStory(hops) {
-      const nodes = ["Sender Mailbox"];
+    function buildRouteStoryNodes(hops) {
+      const nodes = [{ label: "Sender Mailbox", hop: 0, side: "sender" }];
       for (let i = 0; i < hops.length; i += 1) {
-        nodes.push(classifyHostLabel(hops[i].from));
-        nodes.push(classifyHostLabel(hops[i].by));
+        nodes.push({ label: classifyHostLabel(hops[i].from), hop: hops[i].hop, side: "from" });
+        nodes.push({ label: classifyHostLabel(hops[i].by), hop: hops[i].hop, side: "by" });
       }
-      nodes.push("Recipient Mailbox");
+      nodes.push({ label: "Recipient Mailbox", hop: hops.length + 1, side: "recipient" });
 
       const compact = [];
       for (const node of nodes) {
-        if (!compact.length || compact[compact.length - 1] !== node) {
+        if (!compact.length || compact[compact.length - 1].label !== node.label) {
           compact.push(node);
+        } else {
+          // Preserve the latest hop metadata for duplicate labels so boundary
+          // placement does not drift earlier than the true ingress point.
+          compact[compact.length - 1] = node;
         }
       }
       return compact;
+    }
+
+    function buildRouteStory(hops) {
+      return buildRouteStoryNodes(hops).map(function (node) { return node.label; });
     }
 
     function routeStepForHop(hop) {
       return classifyHostLabel(hop.from) + " -> " + classifyHostLabel(hop.by);
     }
 
-    function renderRouteStory(routeNodes, inboundStartNode) {
-      let pivot = -1;
-      if (inboundStartNode) {
-        for (let i = routeNodes.length - 1; i >= 0; i -= 1) {
-          if (routeNodes[i] === inboundStartNode) {
-            pivot = i;
-            break;
-          }
-        }
-      }
-
-      return routeNodes.map(function (node, index) {
-        const safeNode = escapeHtml(node);
-        if (pivot >= 0 && index >= pivot) {
+    function renderRouteStory(routeNodes, inboundStartHop) {
+      return routeNodes.map(function (node) {
+        const safeNode = escapeHtml(node.label);
+        const isInbound = inboundStartHop > 0 && (
+          node.hop > inboundStartHop ||
+          (node.hop === inboundStartHop && (node.side === "by" || node.side === "recipient"))
+        );
+        if (isInbound) {
           return "<span class=\"route-node-internal\">" + safeNode + "</span>";
         }
         return safeNode;
@@ -2949,10 +2997,10 @@ If Python is not installed on this machine:
       }
       ui.microsoftSectionBlock.style.display = msCount ? "block" : "none";
 
-      const routeNodes = buildRouteStory(parsed.hops);
-      const inboundStartNode = detectInboundStartNode(parsed.hops);
+      const routeNodes = buildRouteStoryNodes(parsed.hops);
+      const inboundStartHop = detectInboundStartHop(parsed.hops, parsed.policySignals);
       if (routeNodes.length) {
-        ui.routeInline.innerHTML = "<strong>Route:</strong> " + renderRouteStory(routeNodes, inboundStartNode);
+        ui.routeInline.innerHTML = "<strong>Route:</strong> " + renderRouteStory(routeNodes, inboundStartHop);
       } else {
         ui.routeInline.textContent = "Route: n/a";
       }
