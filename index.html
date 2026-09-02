@@ -759,7 +759,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.09.02.1228";
+    const APP_BUILD = "2026.09.02.1244";
 
     const ui = {
       input: document.getElementById("headerInput"),
@@ -1157,6 +1157,53 @@ If Python is not installed on this machine:
         return Array.from(new Set(out));
       }
 
+      function detectGatewayVendors() {
+        const vendorScores = {
+          IronPort: 0,
+          Proofpoint: 0,
+          Mimecast: 0,
+          Barracuda: 0,
+          Google: 0,
+          Microsoft: 0
+        };
+
+        for (const pair of allPairs) {
+          const key = String(pair.key || "").toLowerCase();
+          const value = String(pair.value || "").toLowerCase();
+          const text = key + " " + value;
+
+          if (key.indexOf("x-ironport") === 0 || key.indexOf("x-threatscanner") === 0 || /\bironport\b|\biphmx\.com\b/.test(text)) {
+            vendorScores.IronPort += 2;
+          }
+          if (key.indexOf("x-proofpoint") === 0 || /\bproofpoint\b|\bpphosted\b|\bpps\b/.test(text)) {
+            vendorScores.Proofpoint += 2;
+          }
+          if (key.indexOf("x-mimecast") === 0 || /\bmimecast\b/.test(text)) {
+            vendorScores.Mimecast += 2;
+          }
+          if (key.indexOf("x-barracuda") === 0 || /\bbarracuda\b/.test(text)) {
+            vendorScores.Barracuda += 2;
+          }
+          if (key.indexOf("x-gm-") === 0 || /\bgmail\b|\bgoogle\b/.test(text)) {
+            vendorScores.Google += 1;
+          }
+          if (key.indexOf("x-ms-") === 0 || key.indexOf("x-forefront-") === 0 || /\boutlook\.office365\.com\b|\bprotection\.outlook\.com\b|\bmicrosoft\b/.test(text)) {
+            vendorScores.Microsoft += 1;
+          }
+        }
+
+        const sorted = Object.keys(vendorScores)
+          .map(function (name) { return { name: name, score: vendorScores[name] }; })
+          .filter(function (entry) { return entry.score > 0; })
+          .sort(function (left, right) { return right.score - left.score; });
+
+        return {
+          vendors: sorted.map(function (entry) { return entry.name; }),
+          primary: sorted.length ? sorted[0].name : "",
+          confidence: sorted.length ? sorted[0].score : 0
+        };
+      }
+
       const gatewayGray = firstHeaderValue(headers, "x-ironport-gray");
       const grayMailHeaderKeys = matchingKeys(/gray\s*mail|graymail|x-ironport-gray|\bironport-gray\b/i);
       const proxyWrappedHeaderKeys = matchingKeys(/proxy\s*wrapped|proxywrapped/i);
@@ -1166,10 +1213,14 @@ If Python is not installed on this machine:
       const grayMailDetected = /\bgray\b/i.test(gatewayGray || "") || grayMailHeaderKeys.length > 0;
       const upstreamScl = firstHeaderValue(headers, "x-ms-exchange-organization-scl");
       const customSpam = firstHeaderValue(headers, "x-customspam");
+      const detectedGateway = detectGatewayVendors();
       return {
         gatewayPolicy: firstHeaderValue(headers, "x-ironport-mailflowpolicy"),
         threatScannerVerdict: firstHeaderValue(headers, "x-threatscannerverdict"),
         hasGatewayContext: hasGatewayContext,
+        gatewayVendors: detectedGateway.vendors,
+        primaryGatewayVendor: detectedGateway.primary,
+        gatewayVendorConfidence: detectedGateway.confidence,
         grayMailDetected: grayMailDetected,
         grayMailValue: gatewayGray,
         grayMailHeaderKeys: grayMailHeaderKeys,
@@ -1186,8 +1237,13 @@ If Python is not installed on this machine:
       const policy = parsed.policySignals;
       const gatewayPolicy = (policy.gatewayPolicy || "").trim();
       const threatVerdict = (policy.threatScannerVerdict || "").trim();
+      const gatewayVendor = (policy.primaryGatewayVendor || "").trim();
       const grayMailDetected = Boolean(policy.grayMailDetected);
       const proxyWrappedUrlFound = Boolean(policy.proxyWrappedUrlFound);
+
+      if (gatewayVendor) {
+        lines.push("Gateway vendor identified from headers: " + gatewayVendor + ".");
+      }
 
       if (gatewayPolicy || threatVerdict || grayMailDetected || proxyWrappedUrlFound) {
         if (/accepted/i.test(gatewayPolicy) && /negative/i.test(threatVerdict)) {
@@ -2231,6 +2287,9 @@ If Python is not installed on this machine:
       if (parsed.policySignals.gatewayPolicy) {
         lines.push("MailFlowPolicy: " + parsed.policySignals.gatewayPolicy);
       }
+      if (parsed.policySignals.primaryGatewayVendor) {
+        lines.push("Gateway Vendor: " + parsed.policySignals.primaryGatewayVendor);
+      }
       if (parsed.policySignals.threatScannerVerdict) {
         lines.push("ThreatScannerVerdict: " + parsed.policySignals.threatScannerVerdict);
       }
@@ -2307,6 +2366,7 @@ If Python is not installed on this machine:
       ].join("");
 
       const gatewayPills = [
+        parsed.policySignals.primaryGatewayVendor ? exportPillHtml("Gateway Vendor: " + parsed.policySignals.primaryGatewayVendor, "ok") : "",
         parsed.policySignals.gatewayPolicy ? exportPillHtml("MailFlowPolicy: " + parsed.policySignals.gatewayPolicy, classifyGatewayPolicy(parsed.policySignals.gatewayPolicy)) : "",
         parsed.policySignals.threatScannerVerdict ? exportPillHtml("ThreatScannerVerdict: " + parsed.policySignals.threatScannerVerdict, classifyThreatScannerVerdict(parsed.policySignals.threatScannerVerdict)) : "",
         exportPillHtml("GrayMail: " + (parsed.policySignals.grayMailDetected ? "Detected" : "Not Detected"), parsed.policySignals.grayMailDetected ? "warn" : "ok"),
@@ -2686,6 +2746,22 @@ If Python is not installed on this machine:
 
       const gateway = parsed.policySignals;
       let gatewayCount = 0;
+      if (gateway.primaryGatewayVendor) {
+        gatewayCount += 1;
+        renderActionPill(
+          ui.gatewayPills,
+          "Gateway Vendor: " + gateway.primaryGatewayVendor,
+          "ok",
+          {
+            type: "jumpHeader",
+            hint: gateway.gatewayVendors && gateway.gatewayVendors.length > 1
+              ? ("Detected vendor fingerprints: " + gateway.gatewayVendors.join(", ") + ".")
+              : "Detected vendor fingerprint from headers and route hostnames.",
+            headerKeys: ["x-ironport-mailflowpolicy", "x-threatscannerverdict", "x-proofpoint", "x-mimecast", "x-barracuda"],
+            fallbackId: "routingSection"
+          }
+        );
+      }
       if (gateway.gatewayPolicy) {
         gatewayCount += 1;
         renderActionPill(
