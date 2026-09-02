@@ -760,7 +760,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.09.02.1354";
+    const APP_BUILD = "2026.09.02.1418";
 
     const ui = {
       input: document.getElementById("headerInput"),
@@ -1177,12 +1177,9 @@ If Python is not installed on this machine:
 
       function gatewayTelemetryHelp(key) {
         const help = {
-          "x-ironport-av": "Gateway anti-virus scan metadata (vendor-specific engine/version telemetry).",
           "x-ironport-listener": "Gateway listener/profile that accepted the SMTP session.",
           "x-ironport-mailflowpolicy": "Gateway policy outcome for message flow handling.",
-          "x-ironport-mid": "Gateway internal message identifier for trace correlation.",
-          "x-ironport-remoteip": "Remote IP observed by the gateway during SMTP intake.",
-          "x-ironport-reputation": "Gateway sender/IP reputation signal used in policy evaluation.",
+          "x-ironport-reputation": "Gateway sender/IP reputation signal used in policy evaluation. In many Cisco deployments this maps to SenderBase/SBRS-like scoring (typically around -10 to +10, where higher is better).",
           "x-ironport-sendergroup": "Gateway sender-group classification tied to policy routing.",
           "x-threatscannerverdict": "Gateway threat scanning verdict field."
         };
@@ -1198,19 +1195,52 @@ If Python is not installed on this machine:
         if (key === "x-threatscannerverdict") {
           return classifyThreatScannerVerdict(rawValue);
         }
+        if (key === "x-ironport-listener") {
+          if (/incoming|inbound/.test(value)) {
+            return "ok";
+          }
+          if (/outgoing|outbound/.test(value)) {
+            return "warn";
+          }
+          return "muted";
+        }
         if (key === "x-ironport-sendergroup" && /unknown|suspect|blocked|quarantine/.test(value)) {
           return "warn";
         }
-        if (key === "x-ironport-reputation" && /poor|bad|low/.test(value)) {
-          return "warn";
+        if (key === "x-ironport-reputation") {
+          const numeric = parseFloat(value);
+          if (!Number.isNaN(numeric)) {
+            if (numeric >= 0) {
+              return "ok";
+            }
+            if (numeric <= -3) {
+              return "bad";
+            }
+            return "warn";
+          }
+          if (/poor|bad|low/.test(value)) {
+            return "warn";
+          }
         }
         return "muted";
       }
 
       function collectGatewayTelemetryEntries(headers) {
+        const suppressedTelemetryKeys = new Set([
+          "x-ironport-av",
+          "x-ironport-mid",
+          "x-ironport-remoteip"
+        ]);
         const telemetryKeys = Object.keys(headers || {})
           .filter(function (key) {
-            return /^(x-(ironport|threatscanner|proofpoint|mimecast|barracuda))/i.test(String(key || ""));
+            const lowered = String(key || "").toLowerCase();
+            if (suppressedTelemetryKeys.has(lowered)) {
+              return false;
+            }
+            if (/anti\s*spam\s*filtered/i.test(lowered)) {
+              return false;
+            }
+            return /^(x-(ironport|threatscanner|proofpoint|mimecast|barracuda))/i.test(lowered);
           })
           .sort();
 
