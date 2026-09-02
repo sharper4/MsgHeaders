@@ -694,9 +694,9 @@ If Python is not installed on this machine:
         <h3 class="heading-line">Auth Results</h3>
         <div id="authPills" class="status-row"></div>
 
-        <section id="ironPortSectionBlock">
-          <h3 class="heading-line">IronPort Signals</h3>
-          <div id="ironPortPills" class="status-row"></div>
+        <section id="gatewaySectionBlock">
+          <h3 class="heading-line">Gateway Security Signals</h3>
+          <div id="gatewayPills" class="status-row"></div>
         </section>
 
                 <section id="microsoftSectionBlock">
@@ -759,7 +759,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.09.02.1205";
+    const APP_BUILD = "2026.09.02.1228";
 
     const ui = {
       input: document.getElementById("headerInput"),
@@ -772,7 +772,7 @@ If Python is not installed on this machine:
       resultsShell: document.getElementById("resultsShell"),
       routingPills: document.getElementById("routingPills"),
       authPills: document.getElementById("authPills"),
-      ironPortPills: document.getElementById("ironPortPills"),
+      gatewayPills: document.getElementById("gatewayPills"),
       microsoftPills: document.getElementById("microsoftPills"),
       googlePills: document.getElementById("googlePills"),
       details: document.getElementById("headerDetails"),
@@ -781,7 +781,7 @@ If Python is not installed on this machine:
       hopTableWrap: document.getElementById("hopTableWrap"),
       toggleHopChain: document.getElementById("toggleHopChain"),
       routeInline: document.getElementById("routeInline"),
-      ironPortSectionBlock: document.getElementById("ironPortSectionBlock"),
+      gatewaySectionBlock: document.getElementById("gatewaySectionBlock"),
       microsoftSectionBlock: document.getElementById("microsoftSectionBlock"),
       googleSectionBlock: document.getElementById("googleSectionBlock"),
       spamHeaders: document.getElementById("spamHeaders"),
@@ -794,7 +794,7 @@ If Python is not installed on this machine:
 
     ui.buildBadge.textContent = "Build " + APP_BUILD;
 
-    ui.ironPortSectionBlock.style.display = "none";
+    ui.gatewaySectionBlock.style.display = "none";
     ui.microsoftSectionBlock.style.display = "none";
 
     let currentParsed = null;
@@ -1157,21 +1157,21 @@ If Python is not installed on this machine:
         return Array.from(new Set(out));
       }
 
-      const ironPortGray = firstHeaderValue(headers, "x-ironport-gray");
+      const gatewayGray = firstHeaderValue(headers, "x-ironport-gray");
       const grayMailHeaderKeys = matchingKeys(/gray\s*mail|graymail|x-ironport-gray|\bironport-gray\b/i);
       const proxyWrappedHeaderKeys = matchingKeys(/proxy\s*wrapped|proxywrapped/i);
-      const hasIronPortContext = allKeys.some(function (key) {
+      const hasGatewayContext = allKeys.some(function (key) {
         return key.indexOf("x-ironport") === 0 || key.indexOf("x-threatscanner") === 0;
       }) || grayMailHeaderKeys.length > 0 || proxyWrappedHeaderKeys.length > 0;
-      const grayMailDetected = /\bgray\b/i.test(ironPortGray || "") || grayMailHeaderKeys.length > 0;
+      const grayMailDetected = /\bgray\b/i.test(gatewayGray || "") || grayMailHeaderKeys.length > 0;
       const upstreamScl = firstHeaderValue(headers, "x-ms-exchange-organization-scl");
       const customSpam = firstHeaderValue(headers, "x-customspam");
       return {
-        ironPortPolicy: firstHeaderValue(headers, "x-ironport-mailflowpolicy"),
+        gatewayPolicy: firstHeaderValue(headers, "x-ironport-mailflowpolicy"),
         threatScannerVerdict: firstHeaderValue(headers, "x-threatscannerverdict"),
-        hasIronPortContext: hasIronPortContext,
+        hasGatewayContext: hasGatewayContext,
         grayMailDetected: grayMailDetected,
-        grayMailValue: ironPortGray,
+        grayMailValue: gatewayGray,
         grayMailHeaderKeys: grayMailHeaderKeys,
         proxyWrappedUrlFound: proxyWrappedHeaderKeys.length > 0,
         proxyWrappedHeaderKeys: proxyWrappedHeaderKeys,
@@ -1184,22 +1184,22 @@ If Python is not installed on this machine:
     function buildNarrativeSummary(parsed) {
       const lines = [];
       const policy = parsed.policySignals;
-      const ironPortPolicy = (policy.ironPortPolicy || "").trim();
+      const gatewayPolicy = (policy.gatewayPolicy || "").trim();
       const threatVerdict = (policy.threatScannerVerdict || "").trim();
       const grayMailDetected = Boolean(policy.grayMailDetected);
       const proxyWrappedUrlFound = Boolean(policy.proxyWrappedUrlFound);
 
-      if (ironPortPolicy || threatVerdict || grayMailDetected || proxyWrappedUrlFound) {
-        if (/accepted/i.test(ironPortPolicy) && /negative/i.test(threatVerdict)) {
-          lines.push("IronPort accepted the message because mail flow policy is Accepted and threat scanner verdict is Negative.");
+      if (gatewayPolicy || threatVerdict || grayMailDetected || proxyWrappedUrlFound) {
+        if (/accepted/i.test(gatewayPolicy) && /negative/i.test(threatVerdict)) {
+          lines.push("Gateway accepted the message because mail flow policy is Accepted and threat scanner verdict is Negative.");
         } else {
           lines.push(
-            "IronPort signals: MailFlowPolicy=" + (ironPortPolicy || "not present") +
+            "Gateway signals: MailFlowPolicy=" + (gatewayPolicy || "not present") +
             ", ThreatScannerVerdict=" + (threatVerdict || "not present") + "."
           );
         }
         if (grayMailDetected) {
-          lines.push("IronPort GrayMail signal detected (bulk/marketing-style classification). Review sender trust and user expectations.");
+          lines.push("Gateway GrayMail signal detected (bulk/marketing-style classification). Review sender trust and user expectations.");
         }
         if (proxyWrappedUrlFound) {
           lines.push("ProxyWrapped URL indicator detected in headers (URL rewriting/protection was applied). Review rewritten links if investigating user-click risk.");
@@ -1682,18 +1682,18 @@ If Python is not installed on this machine:
         notes.push("Threat category detected in CAT: " + cat + " - " + catMeaning(cat));
       }
 
-      const ironPortPolicy = (policySignals && policySignals.ironPortPolicy ? policySignals.ironPortPolicy : "").trim();
+      const gatewayPolicy = (policySignals && policySignals.gatewayPolicy ? policySignals.gatewayPolicy : "").trim();
       const threatVerdict = (policySignals && policySignals.threatScannerVerdict ? policySignals.threatScannerVerdict : "").trim();
       const grayMailDetected = Boolean(policySignals && policySignals.grayMailDetected);
       const proxyWrappedUrlFound = Boolean(policySignals && policySignals.proxyWrappedUrlFound);
-      if (ironPortPolicy && classifyIronPortPolicy(ironPortPolicy) !== "ok") {
-        notes.push("MailFlowPolicy result: " + ironPortPolicy + " - policy outcome needs review.");
+      if (gatewayPolicy && classifyGatewayPolicy(gatewayPolicy) !== "ok") {
+        notes.push("MailFlowPolicy result: " + gatewayPolicy + " - policy outcome needs review.");
       }
       if (threatVerdict && classifyThreatScannerVerdict(threatVerdict) !== "ok") {
         notes.push("ThreatScannerVerdict result: " + threatVerdict + " - scanner did not return a clean/negative verdict.");
       }
       if (grayMailDetected) {
-        notes.push("IronPort GrayMail indicator detected - message may be bulk/marketing style mail.");
+        notes.push("Gateway GrayMail indicator detected - message may be bulk/marketing style mail.");
       }
       if (proxyWrappedUrlFound) {
         notes.push("ProxyWrapped URL indicator detected - links appear to have been rewritten by security controls.");
@@ -1730,7 +1730,7 @@ If Python is not installed on this machine:
       return "muted";
     }
 
-    function classifyIronPortPolicy(value) {
+    function classifyGatewayPolicy(value) {
       const v = (value || "").toLowerCase();
       if (!v) {
         return "muted";
@@ -2228,8 +2228,8 @@ If Python is not installed on this machine:
       if (ms.cat) {
         lines.push("CAT: " + ms.cat);
       }
-      if (parsed.policySignals.ironPortPolicy) {
-        lines.push("MailFlowPolicy: " + parsed.policySignals.ironPortPolicy);
+      if (parsed.policySignals.gatewayPolicy) {
+        lines.push("MailFlowPolicy: " + parsed.policySignals.gatewayPolicy);
       }
       if (parsed.policySignals.threatScannerVerdict) {
         lines.push("ThreatScannerVerdict: " + parsed.policySignals.threatScannerVerdict);
@@ -2306,8 +2306,8 @@ If Python is not installed on this machine:
         ms.cat ? exportPillHtml("CAT: " + ms.cat, classifyCat(ms.cat)) : ""
       ].join("");
 
-      const ironPortPills = [
-        parsed.policySignals.ironPortPolicy ? exportPillHtml("MailFlowPolicy: " + parsed.policySignals.ironPortPolicy, classifyIronPortPolicy(parsed.policySignals.ironPortPolicy)) : "",
+      const gatewayPills = [
+        parsed.policySignals.gatewayPolicy ? exportPillHtml("MailFlowPolicy: " + parsed.policySignals.gatewayPolicy, classifyGatewayPolicy(parsed.policySignals.gatewayPolicy)) : "",
         parsed.policySignals.threatScannerVerdict ? exportPillHtml("ThreatScannerVerdict: " + parsed.policySignals.threatScannerVerdict, classifyThreatScannerVerdict(parsed.policySignals.threatScannerVerdict)) : "",
         exportPillHtml("GrayMail: " + (parsed.policySignals.grayMailDetected ? "Detected" : "Not Detected"), parsed.policySignals.grayMailDetected ? "warn" : "ok"),
         parsed.policySignals.proxyWrappedUrlFound ? exportPillHtml("ProxyWrapped URL: Found", "warn") : ""
@@ -2328,7 +2328,7 @@ If Python is not installed on this machine:
       const routingHtml =
         "<div style=\"margin:0 0 8px;\">" + authPills + "</div>" +
         (microsoftPills ? "<div style=\"margin:8px 0 0;\"><div style=\"margin:0 0 6px;font-size:12px;font-weight:700;color:#486581;text-transform:uppercase;letter-spacing:0.4px;\">Receiving Gateway Signals</div>" + microsoftPills + "</div>" : "") +
-        (ironPortPills ? "<div style=\"margin:8px 0 0;\"><div style=\"margin:0 0 6px;font-size:12px;font-weight:700;color:#486581;text-transform:uppercase;letter-spacing:0.4px;\">IronPort Signals</div>" + ironPortPills + "</div>" : "") +
+        (gatewayPills ? "<div style=\"margin:8px 0 0;\"><div style=\"margin:0 0 6px;font-size:12px;font-weight:700;color:#486581;text-transform:uppercase;letter-spacing:0.4px;\">Gateway Security Signals</div>" + gatewayPills + "</div>" : "") +
         "<div style=\"margin:12px 0 0;padding:10px 12px;border:1px solid #d8e3ee;border-radius:10px;background:#ffffff;color:#102a43;\"><strong>Route:</strong> " + escapeHtml(buildRouteStory(parsed.hops).join(" -> ")) + "</div>";
 
       return "<div style=\"font-family:Segoe UI,Aptos,Tahoma,sans-serif;color:#102a43;line-height:1.45;background:#eef4f8;padding:18px;border-radius:16px;\">" +
@@ -2551,7 +2551,7 @@ If Python is not installed on this machine:
     function renderSummary(parsed) {
       ui.routingPills.innerHTML = "";
       ui.authPills.innerHTML = "";
-      ui.ironPortPills.innerHTML = "";
+      ui.gatewayPills.innerHTML = "";
       ui.microsoftPills.innerHTML = "";
       ui.googlePills.innerHTML = "";
       ui.details.innerHTML = "";
@@ -2684,28 +2684,28 @@ If Python is not installed on this machine:
         });
       }
 
-      const iron = parsed.policySignals;
-      let ironCount = 0;
-      if (iron.ironPortPolicy) {
-        ironCount += 1;
+      const gateway = parsed.policySignals;
+      let gatewayCount = 0;
+      if (gateway.gatewayPolicy) {
+        gatewayCount += 1;
         renderActionPill(
-          ui.ironPortPills,
-          "MailFlowPolicy: " + iron.ironPortPolicy,
-          classifyIronPortPolicy(iron.ironPortPolicy),
+          ui.gatewayPills,
+          "MailFlowPolicy: " + gateway.gatewayPolicy,
+          classifyGatewayPolicy(gateway.gatewayPolicy),
           {
             type: "jumpHeader",
-            hint: "X-IronPort-MailFlowPolicy. Accepted/Allow usually indicates clean flow. Reject/Quarantine/Block are higher-risk outcomes. Click to jump to this header.",
+            hint: "MailFlowPolicy header. Accepted/Allow usually indicates clean flow. Reject/Quarantine/Block are higher-risk outcomes. Click to jump to this header.",
             headerKeys: ["x-ironport-mailflowpolicy"],
             fallbackId: "spamSection"
           }
         );
       }
-      if (iron.threatScannerVerdict) {
-        ironCount += 1;
+      if (gateway.threatScannerVerdict) {
+        gatewayCount += 1;
         renderActionPill(
-          ui.ironPortPills,
-          "ThreatScannerVerdict: " + iron.threatScannerVerdict,
-          classifyThreatScannerVerdict(iron.threatScannerVerdict),
+          ui.gatewayPills,
+          "ThreatScannerVerdict: " + gateway.threatScannerVerdict,
+          classifyThreatScannerVerdict(gateway.threatScannerVerdict),
           {
             type: "jumpHeader",
             hint: "X-ThreatScannerVerdict. Negative/Clean are lower risk. Positive/Malicious/Phish/Spam indicate higher risk. Click to jump to this header.",
@@ -2714,35 +2714,35 @@ If Python is not installed on this machine:
           }
         );
       }
-      if (iron.grayMailDetected) {
-        ironCount += 1;
+      if (gateway.grayMailDetected) {
+        gatewayCount += 1;
         renderActionPill(
-          ui.ironPortPills,
-          "GrayMail: " + (iron.grayMailValue || "Detected"),
+          ui.gatewayPills,
+          "GrayMail: " + (gateway.grayMailValue || "Detected"),
           "warn",
           {
             type: "jumpHeader",
-            hint: "X-IronPort-Gray (for example, value Gray) indicates GrayMail/bulk-style classification, often newsletters or promotional campaigns. Click to jump to matching headers.",
-            headerKeys: (iron.grayMailHeaderKeys && iron.grayMailHeaderKeys.length) ? iron.grayMailHeaderKeys : ["x-ironport-gray", "x-ironport-mailflowpolicy"],
+            hint: "GrayMail header signal (for example, value Gray) indicates bulk-style classification, often newsletters or promotional campaigns. Click to jump to matching headers.",
+            headerKeys: (gateway.grayMailHeaderKeys && gateway.grayMailHeaderKeys.length) ? gateway.grayMailHeaderKeys : ["x-ironport-gray", "x-ironport-mailflowpolicy"],
             fallbackId: "spamSection"
           }
         );
       }
-      if (iron.proxyWrappedUrlFound) {
-        ironCount += 1;
+      if (gateway.proxyWrappedUrlFound) {
+        gatewayCount += 1;
         renderActionPill(
-          ui.ironPortPills,
+          ui.gatewayPills,
           "ProxyWrapped URL: Found",
           "warn",
           {
             type: "jumpHeader",
             hint: "ProxyWrapped URL indicates URL rewriting/protection was applied (common in secure email gateways and click-protection workflows).",
-            headerKeys: (iron.proxyWrappedHeaderKeys && iron.proxyWrappedHeaderKeys.length) ? iron.proxyWrappedHeaderKeys : ["x-ironport-mailflowpolicy", "x-threatscannerverdict"],
+            headerKeys: (gateway.proxyWrappedHeaderKeys && gateway.proxyWrappedHeaderKeys.length) ? gateway.proxyWrappedHeaderKeys : ["x-ironport-mailflowpolicy", "x-threatscannerverdict"],
             fallbackId: "spamSection"
           }
         );
       }
-      ui.ironPortSectionBlock.style.display = ironCount ? "block" : "none";
+      ui.gatewaySectionBlock.style.display = gatewayCount ? "block" : "none";
 
       const googleSpam = firstHeaderValue(parsed.headers, "x-gm-spam");
       const googlePhishy = firstHeaderValue(parsed.headers, "x-gm-phishy");
@@ -2832,9 +2832,9 @@ If Python is not installed on this machine:
           fallbackId: "spamSection"
         });
       }
-      if (iron.customSpam) {
+      if (gateway.customSpam) {
         msCount += 1;
-        renderActionPill(ui.microsoftPills, "Advanced Spam Filtering Triggered: " + iron.customSpam, "warn", {
+        renderActionPill(ui.microsoftPills, "Advanced Spam Filtering Triggered: " + gateway.customSpam, "warn", {
           type: "jumpHeader",
           hint: "X-CustomSpam indicates that an advanced/custom spam filtering rule contributed metadata to the message classification.",
           headerKeys: ["x-customspam"],
@@ -2987,7 +2987,7 @@ If Python is not installed on this machine:
       ui.input.value = "";
       ui.routingPills.innerHTML = "";
       ui.authPills.innerHTML = "";
-      ui.ironPortPills.innerHTML = "";
+      ui.gatewayPills.innerHTML = "";
       ui.microsoftPills.innerHTML = "";
       ui.details.innerHTML = "";
       ui.hopTable.innerHTML = "";
@@ -2995,7 +2995,7 @@ If Python is not installed on this machine:
       ui.routeInline.innerHTML = "";
       ui.spamHeaders.innerHTML = "";
       ui.otherHeaders.innerHTML = "";
-      ui.ironPortSectionBlock.style.display = "none";
+      ui.gatewaySectionBlock.style.display = "none";
       ui.microsoftSectionBlock.style.display = "none";
       resetHeaderListExpansion();
       resetHopChainExpansion();
