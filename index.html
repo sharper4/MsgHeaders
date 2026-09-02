@@ -695,7 +695,7 @@ If Python is not installed on this machine:
         <div id="authPills" class="status-row"></div>
 
         <section id="gatewaySectionBlock">
-          <h3 class="heading-line">Gateway Security Signals</h3>
+          <h3 class="heading-line"><span id="gatewaySectionTitle">Gateway Security Signals</span></h3>
           <div id="gatewayPills" class="status-row"></div>
           <div id="gatewayTrustNote" class="hint"></div>
         </section>
@@ -760,7 +760,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.09.02.1436";
+    const APP_BUILD = "2026.09.02.1502";
 
     const ui = {
       input: document.getElementById("headerInput"),
@@ -774,6 +774,7 @@ If Python is not installed on this machine:
       routingPills: document.getElementById("routingPills"),
       authPills: document.getElementById("authPills"),
       gatewayPills: document.getElementById("gatewayPills"),
+      gatewaySectionTitle: document.getElementById("gatewaySectionTitle"),
       gatewayTrustNote: document.getElementById("gatewayTrustNote"),
       microsoftPills: document.getElementById("microsoftPills"),
       googlePills: document.getElementById("googlePills"),
@@ -1917,14 +1918,15 @@ If Python is not installed on this machine:
     }
 
     function classifyThreatScannerVerdict(value) {
-      const v = (value || "").toLowerCase();
-      if (!v) {
+      const raw = String(value || "").toLowerCase();
+      const normalized = raw.replace(/[^a-z0-9]+/g, " ").trim();
+      if (!normalized) {
         return "muted";
       }
-      if (v.includes("negative") || v.includes("clean") || v.includes("benign")) {
+      if (/\b(negative|clean|benign|no threat|not malicious|not spam)\b/.test(normalized)) {
         return "ok";
       }
-      if (v.includes("malicious") || v.includes("phish") || v.includes("spam") || v.includes("positive") || v.includes("infected")) {
+      if (/\b(malicious|phish|spam|positive|infected|virus|trojan|ransomware)\b/.test(normalized)) {
         return "bad";
       }
       return "warn";
@@ -2566,7 +2568,6 @@ If Python is not installed on this machine:
       ].join("");
 
       const gatewayPills = [
-        parsed.policySignals.primaryGatewayVendor ? exportPillHtml("Gateway Vendor: " + parsed.policySignals.primaryGatewayVendor, "ok") : "",
         (parsed.policySignals.gatewayTelemetry && parsed.policySignals.gatewayTelemetry.length)
           ? exportPillHtml("Vendor Telemetry Headers: " + parsed.policySignals.gatewayTelemetry.length, "muted")
           : "",
@@ -2591,7 +2592,7 @@ If Python is not installed on this machine:
       const routingHtml =
         "<div style=\"margin:0 0 8px;\">" + authPills + "</div>" +
         (microsoftPills ? "<div style=\"margin:8px 0 0;\"><div style=\"margin:0 0 6px;font-size:12px;font-weight:700;color:#486581;text-transform:uppercase;letter-spacing:0.4px;\">Receiving Gateway Signals</div>" + microsoftPills + "</div>" : "") +
-        (gatewayPills ? "<div style=\"margin:8px 0 0;\"><div style=\"margin:0 0 6px;font-size:12px;font-weight:700;color:#486581;text-transform:uppercase;letter-spacing:0.4px;\">Gateway Security Signals</div>" + gatewayPills + "</div>" : "") +
+        (gatewayPills ? "<div style=\"margin:8px 0 0;\"><div style=\"margin:0 0 6px;font-size:12px;font-weight:700;color:#486581;text-transform:uppercase;letter-spacing:0.4px;\">" + escapeHtml(parsed.policySignals.primaryGatewayVendor ? ("Gateway Security Signals (" + parsed.policySignals.primaryGatewayVendor + ")") : "Gateway Security Signals") + "</div>" + gatewayPills + "</div>" : "") +
         "<div style=\"margin:12px 0 0;padding:10px 12px;border:1px solid #d8e3ee;border-radius:10px;background:#ffffff;color:#102a43;\"><strong>Route:</strong> " + escapeHtml(buildRouteStory(parsed.hops).join(" -> ")) + "</div>";
 
       return "<div style=\"font-family:Segoe UI,Aptos,Tahoma,sans-serif;color:#102a43;line-height:1.45;background:#eef4f8;padding:18px;border-radius:16px;\">" +
@@ -2951,25 +2952,13 @@ If Python is not installed on this machine:
 
       const gateway = parsed.policySignals;
       let gatewayCount = 0;
+      const gatewayTitle = gateway.primaryGatewayVendor
+        ? ("Gateway Security Signals (" + gateway.primaryGatewayVendor + ")")
+        : "Gateway Security Signals";
+      ui.gatewaySectionTitle.textContent = gatewayTitle;
       const gatewayTelemetryList = (gateway.gatewayTelemetry || []).filter(function (entry) {
         return !["x-ironport-mailflowpolicy", "x-threatscannerverdict", "x-ironport-gray"].includes(entry.key);
       });
-      if (gateway.primaryGatewayVendor) {
-        gatewayCount += 1;
-        renderActionPill(
-          ui.gatewayPills,
-          "Gateway Vendor: " + gateway.primaryGatewayVendor,
-          "ok",
-          {
-            type: "jumpHeader",
-            hint: gateway.gatewayVendors && gateway.gatewayVendors.length > 1
-              ? ("Detected vendor fingerprints: " + gateway.gatewayVendors.join(", ") + ".")
-              : "Detected vendor fingerprint from headers and route hostnames.",
-            headerKeys: ["x-ironport-mailflowpolicy", "x-threatscannerverdict", "x-proofpoint", "x-mimecast", "x-barracuda"],
-            fallbackId: "routingSection"
-          }
-        );
-      }
       if (gateway.gatewayPolicy) {
         gatewayCount += 1;
         renderActionPill(
@@ -3047,7 +3036,7 @@ If Python is not installed on this machine:
           ? ("Vendor-specific telemetry is present. Confidence is higher because gateway ingress was identified at hop #" + inboundStartHop + ".")
           : "Vendor-specific telemetry is present, but ingress hop could not be confidently identified. Treat as supporting context.";
       }
-      ui.gatewaySectionBlock.style.display = gatewayCount ? "block" : "none";
+      ui.gatewaySectionBlock.style.display = (gatewayCount || gateway.primaryGatewayVendor) ? "block" : "none";
 
       const googleSpam = firstHeaderValue(parsed.headers, "x-gm-spam");
       const googlePhishy = firstHeaderValue(parsed.headers, "x-gm-phishy");
@@ -3300,6 +3289,7 @@ If Python is not installed on this machine:
       ui.routeInline.innerHTML = "";
       ui.spamHeaders.innerHTML = "";
       ui.otherHeaders.innerHTML = "";
+      ui.gatewaySectionTitle.textContent = "Gateway Security Signals";
       ui.gatewaySectionBlock.style.display = "none";
       ui.microsoftSectionBlock.style.display = "none";
       resetHeaderListExpansion();
