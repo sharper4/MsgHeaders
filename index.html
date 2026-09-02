@@ -760,7 +760,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.09.02.1502";
+    const APP_BUILD = "2026.09.02.1524";
 
     const ui = {
       input: document.getElementById("headerInput"),
@@ -1183,7 +1183,8 @@ If Python is not installed on this machine:
           "x-ironport-mailflowpolicy": "Gateway policy outcome for message flow handling.",
           "x-ironport-reputation": "Gateway sender/IP reputation signal used in policy evaluation. In many Cisco deployments this maps to SenderBase/SBRS-like scoring (typically around -10 to +10, where higher is better).",
           "x-ironport-sendergroup": "Gateway sender-group classification tied to policy routing.",
-          "x-threatscannerverdict": "Gateway threat scanning verdict field."
+          "x-threatscannerverdict": "Gateway threat scanning verdict field.",
+          "x-threatscanner-verdict": "Gateway threat scanning verdict field."
         };
         return help[key] || "Vendor-specific gateway telemetry header (non-RFC standard). Interpret with vendor documentation and route context.";
       }
@@ -1203,7 +1204,7 @@ If Python is not installed on this machine:
         if (key === "x-ironport-mailflowpolicy") {
           return classifyGatewayPolicy(rawValue);
         }
-        if (key === "x-threatscannerverdict") {
+        if (key === "x-threatscannerverdict" || key === "x-threatscanner-verdict") {
           return classifyThreatScannerVerdict(rawValue);
         }
         if (key === "x-ironport-listener") {
@@ -1330,9 +1331,10 @@ If Python is not installed on this machine:
       const customSpam = firstHeaderValue(headers, "x-customspam");
       const detectedGateway = detectGatewayVendors();
       const gatewayTelemetry = collectGatewayTelemetryEntries(headers);
+      const threatScannerVerdict = firstHeaderValue(headers, "x-threatscannerverdict") || firstHeaderValue(headers, "x-threatscanner-verdict");
       return {
         gatewayPolicy: firstHeaderValue(headers, "x-ironport-mailflowpolicy"),
-        threatScannerVerdict: firstHeaderValue(headers, "x-threatscannerverdict"),
+        threatScannerVerdict: threatScannerVerdict,
         hasGatewayContext: hasGatewayContext || gatewayTelemetry.length > 0,
         gatewayVendors: detectedGateway.vendors,
         primaryGatewayVendor: detectedGateway.primary,
@@ -2957,7 +2959,7 @@ If Python is not installed on this machine:
         : "Gateway Security Signals";
       ui.gatewaySectionTitle.textContent = gatewayTitle;
       const gatewayTelemetryList = (gateway.gatewayTelemetry || []).filter(function (entry) {
-        return !["x-ironport-mailflowpolicy", "x-threatscannerverdict", "x-ironport-gray"].includes(entry.key);
+        return !["x-ironport-mailflowpolicy", "x-threatscannerverdict", "x-threatscanner-verdict", "x-ironport-gray"].includes(entry.key);
       });
       if (gateway.gatewayPolicy) {
         gatewayCount += 1;
@@ -2982,7 +2984,7 @@ If Python is not installed on this machine:
           {
             type: "jumpHeader",
             hint: "X-ThreatScannerVerdict. Negative/Clean are lower risk. Positive/Malicious/Phish/Spam indicate higher risk. Click to jump to this header.",
-            headerKeys: ["x-threatscannerverdict"],
+            headerKeys: ["x-threatscannerverdict", "x-threatscanner-verdict"],
             fallbackId: "spamSection"
           }
         );
@@ -3010,7 +3012,7 @@ If Python is not installed on this machine:
           {
             type: "jumpHeader",
             hint: "ProxyWrapped URL indicates URL rewriting/protection was applied (common in secure email gateways and click-protection workflows).",
-            headerKeys: (gateway.proxyWrappedHeaderKeys && gateway.proxyWrappedHeaderKeys.length) ? gateway.proxyWrappedHeaderKeys : ["x-ironport-mailflowpolicy", "x-threatscannerverdict"],
+            headerKeys: (gateway.proxyWrappedHeaderKeys && gateway.proxyWrappedHeaderKeys.length) ? gateway.proxyWrappedHeaderKeys : ["x-ironport-mailflowpolicy", "x-threatscannerverdict", "x-threatscanner-verdict"],
             fallbackId: "spamSection"
           }
         );
