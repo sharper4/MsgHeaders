@@ -1505,6 +1505,8 @@ If Python is not installed on this machine:
         spamscore: "Spam Score",
         priorityscore: "Priority Score",
         phishscore: "Phish Score",
+        lowpriorityscore: "Low Priority Score",
+        adultscore: "Adult Score",
         adjust: "Adjust",
         scancount: "Scan Count"
       };
@@ -1521,6 +1523,8 @@ If Python is not installed on this machine:
         spamscore: "Spam score describes the message's direct spam weighting. A higher score raises suspicion, while 0 often means a clean or non-spam classification.",
         priorityscore: "Priority score is a relative weighting used by the gateway to rank the severity or handling priority of the message.",
         phishscore: "Phish score reflects phishing likelihood from the gateway's content, URL, or sender heuristics. Higher values increase phishing concern.",
+        lowpriorityscore: "Low-priority score is a supporting Proofpoint signal used to distinguish lower-priority but still notable messages from clear spam or phishing traffic.",
+        adultscore: "Adult-content score reflects the gateway's adult/explicit-content weighting. It is a supporting signal, not a trust or malware verdict by itself.",
         adjust: "Adjust is an internal Proofpoint weighting adjustment applied during policy evaluation. It is only meaningful when non-zero, and often serves as a supporting signal rather than a primary verdict.",
         scancount: "Scan count indicates how many gateway scanning passes or engines evaluated the message. It matters only when it is greater than 1, since a single scan is routine and not highly informative."
       };
@@ -1537,6 +1541,8 @@ If Python is not installed on this machine:
         "bulkscore",
         "spamscore",
         "phishscore",
+        "lowpriorityscore",
+        "adultscore",
         "adjust",
         "scancount"
       ];
@@ -2817,7 +2823,7 @@ If Python is not installed on this machine:
       const gatewayLabel = proofpoint.hasSignals ? "Proofpoint Security Signals" : "Receiving Gateway Signals";
       const proofpointFieldPills = proofpoint.parsed ? Object.entries(proofpoint.parsed)
         .filter(function ([key, value]) {
-          if (!value || !["score", "impostorscore", "malwarescore", "bulkscore", "clscore", "spamscore", "priorityscore", "phishscore", "adjust", "scancount"].includes(key)) {
+          if (!value || !["score", "impostorscore", "malwarescore", "bulkscore", "clscore", "spamscore", "priorityscore", "phishscore", "lowpriorityscore", "adultscore", "adjust", "scancount"].includes(key)) {
             return false;
           }
           if (key === "adjust") {
@@ -2826,7 +2832,7 @@ If Python is not installed on this machine:
           if (key === "scancount") {
             return Number.parseInt(value, 10) > 1;
           }
-          return true;
+          return Number.parseInt(value, 10) > 0;
         })
         .map(function ([key, value]) {
           const numericValue = Number.parseInt(value, 10);
