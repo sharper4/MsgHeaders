@@ -577,6 +577,23 @@ If Python is not installed on this machine:
       display: none;
     }
 
+    .counter-badge {
+      position: fixed;
+      right: 18px;
+      bottom: 58px;
+      z-index: 19;
+      border: 1px solid #355a7b;
+      background: rgba(9, 26, 40, 0.88);
+      color: #9fc5e3;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.7rem;
+      line-height: 1;
+      letter-spacing: 0.2px;
+      pointer-events: none;
+      user-select: none;
+    }
+
     .build-badge {
       position: fixed;
       right: 18px;
@@ -704,7 +721,7 @@ If Python is not installed on this machine:
         </section>
 
                 <section id="microsoftSectionBlock">
-                  <h3 class="heading-line">Microsoft Threat Signals</h3>
+                  <h3 class="heading-line">Gateway Security Signals</h3>
           <div id="microsoftPills" class="status-row"></div>
         </section>
 
@@ -758,12 +775,15 @@ If Python is not installed on this machine:
 
     </section>
     <button id="scrollTopBtn" class="floating-action is-hidden" type="button">Go To Top</button>
+    <div id="pageCounterBadge" class="counter-badge" aria-label="Page usage counter">Views 500</div>
     <div id="buildBadge" class="build-badge" aria-label="Build version">Build</div>
     <a id="authorBadge" class="author-badge" href="https://www.linkedin.com/in/scottharper4" target="_blank" rel="noopener noreferrer" aria-label="Written by Scott Harper">Written by Scott Harper</a>
   </main>
 
     <script>
-    const APP_BUILD = "2026.09.02.1627";
+    const APP_BUILD = "2026.09.16.1706";
+    const PAGE_COUNTER_START = 500;
+    const PAGE_COUNTER_KEY = "msgheaders-page-counter";
 
     const ui = {
       input: document.getElementById("headerInput"),
@@ -795,8 +815,18 @@ If Python is not installed on this machine:
       toggleSpamHeaders: document.getElementById("toggleSpamHeaders"),
       toggleOtherHeaders: document.getElementById("toggleOtherHeaders"),
       buildBadge: document.getElementById("buildBadge"),
-      authorBadge: document.getElementById("authorBadge")
+      authorBadge: document.getElementById("authorBadge"),
+      pageCounterBadge: document.getElementById("pageCounterBadge")
     };
+
+    try {
+      const savedPageCount = Number.parseInt(localStorage.getItem(PAGE_COUNTER_KEY) || "", 10);
+      const pageCount = Number.isFinite(savedPageCount) && savedPageCount >= PAGE_COUNTER_START ? savedPageCount : PAGE_COUNTER_START;
+      localStorage.setItem(PAGE_COUNTER_KEY, String(pageCount + 1));
+      ui.pageCounterBadge.textContent = "Views " + pageCount;
+    } catch (error) {
+      ui.pageCounterBadge.textContent = "Views " + PAGE_COUNTER_START;
+    }
 
     ui.buildBadge.textContent = "Build " + APP_BUILD;
 
@@ -1089,9 +1119,14 @@ If Python is not installed on this machine:
       const spamHeaders = {};
       const otherHeaders = {};
       const sortedKeys = Object.keys(headers).sort();
+      const hiddenProofpointHeaders = [/^x-proofpoint-spam-info$/i, /^x-proofpoint-spam-details-enc$/i];
 
       for (const key of sortedKeys) {
-        if (isSecurityOrSpamHeader(key)) {
+        const isHiddenProofpointHeader = hiddenProofpointHeaders.some(function (pattern) {
+          return pattern.test(key);
+        });
+
+        if (isSecurityOrSpamHeader(key) && !isHiddenProofpointHeader) {
           spamHeaders[key] = headers[key];
         } else {
           otherHeaders[key] = headers[key];
@@ -1358,6 +1393,80 @@ If Python is not installed on this machine:
         customSpam: customSpam,
         forefront: parseForefrontFields(headers)
       };
+    }
+
+    function parseProofpointKeyValuePairs(value) {
+      const fields = {};
+      const source = String(value || "").trim();
+      if (!source) {
+        return fields;
+      }
+
+      for (const token of source.split(/\s+/)) {
+        const separatorIndex = token.indexOf("=");
+        if (separatorIndex < 1) {
+          continue;
+        }
+        const key = token.slice(0, separatorIndex).trim().toLowerCase();
+        const fieldValue = token.slice(separatorIndex + 1).trim();
+        if (key && fieldValue) {
+          fields[key] = fieldValue;
+        }
+      }
+
+      return fields;
+    }
+
+    function parseProofpointSignals(headers) {
+      const guid = firstHeaderValue(headers, "x-proofpoint-guid");
+      const originalGuid = firstHeaderValue(headers, "x-proofpoint-original-guid");
+      const spamDetailsRaw = firstHeaderValue(headers, "x-proofpoint-spam-details");
+      const spamInfoRaw = firstHeaderValue(headers, "x-proofpoint-spam-info");
+      const spamDetailsEncRaw = firstHeaderValue(headers, "x-proofpoint-spam-details-enc");
+      const spamFields = parseProofpointKeyValuePairs(spamDetailsRaw);
+      const infoFields = parseProofpointKeyValuePairs(spamInfoRaw);
+      const directionValue = spamFields.route || spamFields.policy || infoFields.route || infoFields.policy || "";
+      const combinedGuid = guid || originalGuid || "";
+      const summary = Object.entries(spamFields)
+        .slice(0, 12)
+        .map(function (entry) {
+          return entry[0] + "=" + entry[1];
+        })
+        .join(" ") || String(spamInfoRaw || spamDetailsEncRaw || "").replace(/\s+/g, " ").slice(0, 180);
+
+      return {
+        hasSignals: Boolean(guid || originalGuid || spamDetailsRaw || spamInfoRaw || spamDetailsEncRaw || directionValue),
+        direction: directionValue ? String(directionValue).toLowerCase() : "",
+        directionLabel: directionValue ? (String(directionValue).toLowerCase() === "inbound" ? "Inbound" : String(directionValue).toLowerCase() === "outbound" ? "Outbound" : directionValue) : "",
+        guid: combinedGuid,
+        originalGuid: originalGuid || "",
+        spamDetails: spamDetailsRaw || "",
+        spamInfo: spamInfoRaw || "",
+        spamDetailsEnc: spamDetailsEncRaw || "",
+        parsed: spamFields,
+        parsedInfo: infoFields,
+        summary: summary
+      };
+    }
+
+    function classifyProofpointSpam(details) {
+      const score = Number.parseInt(details && details.score, 10);
+      const spamScore = Number.parseInt(details && details.spamscore, 10);
+      const phishScore = Number.parseInt(details && details.phishscore, 10);
+      const bulkScore = Number.parseInt(details && details.bulkscore, 10);
+      if (!Number.isNaN(spamScore) && spamScore > 0) {
+        return "bad";
+      }
+      if (!Number.isNaN(phishScore) && phishScore > 0) {
+        return "warn";
+      }
+      if (!Number.isNaN(bulkScore) && bulkScore > 0) {
+        return "warn";
+      }
+      if (!Number.isNaN(score) && score > 0) {
+        return "warn";
+      }
+      return "ok";
     }
 
     function buildNarrativeSummary(parsed) {
@@ -2570,7 +2679,12 @@ If Python is not installed on this machine:
         exportPillHtml("End-to-End: " + formatDuration(parsed.totalTransitMs), typeof parsed.totalTransitMs === "number" ? "ok" : "warn")
       ].join("");
 
+      const proofpoint = parsed.proofpoint || {};
+      const gatewayLabel = proofpoint.hasSignals ? "Proofpoint Security Signals" : "Receiving Gateway Signals";
       const microsoftPills = [
+        proofpoint.directionLabel ? exportPillHtml("Direction: " + proofpoint.directionLabel, proofpoint.direction === "inbound" ? "ok" : "warn") : "",
+        proofpoint.guid ? exportPillHtml("GUID: " + proofpoint.guid, "muted") : "",
+        proofpoint.summary ? exportPillHtml("Spam Details: " + (proofpoint.summary.length > 90 ? proofpoint.summary.slice(0, 87) + "..." : proofpoint.summary), classifyProofpointSpam(proofpoint.parsed)) : "",
         ms.scl ? exportPillHtml("SCL: " + ms.scl, classifyScl(ms.scl)) : "",
         ms.bcl ? exportPillHtml("BCL: " + ms.bcl, classifyBcl(ms.bcl)) : "",
         ms.pcl ? exportPillHtml("PCL: " + ms.pcl, classifyPcl(ms.pcl)) : "",
@@ -2602,8 +2716,9 @@ If Python is not installed on this machine:
 
       const routingHtml =
         "<div style=\"margin:0 0 8px;\">" + authPills + "</div>" +
-        (microsoftPills ? "<div style=\"margin:8px 0 0;\"><div style=\"margin:0 0 6px;font-size:12px;font-weight:700;color:#486581;text-transform:uppercase;letter-spacing:0.4px;\">Receiving Gateway Signals</div>" + microsoftPills + "</div>" : "") +
+        (microsoftPills ? "<div style=\"margin:8px 0 0;\"><div style=\"margin:0 0 6px;font-size:12px;font-weight:700;color:#486581;text-transform:uppercase;letter-spacing:0.4px;\">" + escapeHtml(gatewayLabel) + "</div>" + microsoftPills + "</div>" : "") +
         (gatewayPills ? "<div style=\"margin:8px 0 0;\"><div style=\"margin:0 0 6px;font-size:12px;font-weight:700;color:#486581;text-transform:uppercase;letter-spacing:0.4px;\">" + escapeHtml(parsed.policySignals.primaryGatewayVendor ? ("Gateway Security Signals (" + parsed.policySignals.primaryGatewayVendor + ")") : "Gateway Security Signals") + "</div>" + gatewayPills + "</div>" : "") +
+        (ironPortPills ? "<div style=\"margin:8px 0 0;\"><div style=\"margin:0 0 6px;font-size:12px;font-weight:700;color:#486581;text-transform:uppercase;letter-spacing:0.4px;\">IronPort Signals</div>" + ironPortPills + "</div>" : "") +
         "<div style=\"margin:12px 0 0;padding:10px 12px;border:1px solid #d8e3ee;border-radius:10px;background:#ffffff;color:#102a43;\"><strong>Route:</strong> " + escapeHtml(buildRouteStory(parsed.hops).join(" -> ")) + "</div>";
 
       return "<div style=\"font-family:Segoe UI,Aptos,Tahoma,sans-serif;color:#102a43;line-height:1.45;background:#eef4f8;padding:18px;border-radius:16px;\">" +
@@ -2962,14 +3077,62 @@ If Python is not installed on this machine:
       }
 
       const gateway = parsed.policySignals;
+      const pp = parsed.proofpoint || {};
       let gatewayCount = 0;
-      const gatewayTitle = gateway.primaryGatewayVendor
-        ? ("Gateway Security Signals (" + gateway.primaryGatewayVendor + ")")
-        : "Gateway Security Signals";
+      const gatewayTitle = pp.hasSignals
+        ? "Proofpoint Security Signals"
+        : (gateway.primaryGatewayVendor ? ("Gateway Security Signals (" + gateway.primaryGatewayVendor + ")") : "Gateway Security Signals");
       ui.gatewaySectionTitle.textContent = gatewayTitle;
       const gatewayTelemetryList = (gateway.gatewayTelemetry || []).filter(function (entry) {
         return !["x-ironport-mailflowpolicy", "x-threatscannerverdict", "x-threatscanner-verdict", "x-ironport-gray"].includes(entry.key);
       });
+
+      if (pp.hasSignals) {
+        if (pp.directionLabel) {
+          gatewayCount += 1;
+          renderActionPill(
+            ui.gatewayPills,
+            "Direction: " + pp.directionLabel,
+            pp.direction === "inbound" ? "ok" : "warn",
+            {
+              type: "jumpHeader",
+              hint: "Proofpoint direction indicates whether the gateway classified the message as inbound or outbound. This is a useful flow indicator but should be interpreted alongside the detailed spam score.",
+              headerKeys: ["x-proofpoint-spam-details"],
+              fallbackId: "spamSection"
+            }
+          );
+        }
+        if (pp.guid) {
+          gatewayCount += 1;
+          renderActionPill(
+            ui.gatewayPills,
+            "GUID: " + pp.guid,
+            "muted",
+            {
+              type: "jumpHeader",
+              hint: "Proofpoint message GUID used to correlate the message across gateway logs. If an Original GUID is present and differs, review that upstream value as well.",
+              headerKeys: ["x-proofpoint-guid", "x-proofpoint-original-guid"],
+              fallbackId: "spamSection"
+            }
+          );
+        }
+        if (pp.summary) {
+          gatewayCount += 1;
+          const spamSummaryText = pp.summary.length > 90 ? pp.summary.slice(0, 87) + "..." : pp.summary;
+          renderActionPill(
+            ui.gatewayPills,
+            "Spam Details: " + spamSummaryText,
+            classifyProofpointSpam(pp.parsed),
+            {
+              type: "jumpHeader",
+              hint: "Parsed Proofpoint spam detail fields such as rule, policy, score, impostor score, bulk score, phish score, route, reason, and scan count. Click to jump to the original header value.",
+              headerKeys: ["x-proofpoint-spam-details"],
+              fallbackId: "spamSection"
+            }
+          );
+        }
+      }
+
       if (gateway.gatewayPolicy) {
         gatewayCount += 1;
         renderActionPill(
@@ -3074,6 +3237,42 @@ If Python is not installed on this machine:
 
       const ms = parsed.policySignals.forefront;
       let msCount = 0;
+      const gatewayHeading = ui.microsoftSectionBlock.querySelector("h3");
+      if (gatewayHeading) {
+        gatewayHeading.textContent = parsed.proofpoint && parsed.proofpoint.hasSignals ? "Proofpoint Security Signals" : "Gateway Security Signals";
+      }
+
+      if (pp.hasSignals) {
+        if (pp.directionLabel) {
+          msCount += 1;
+          renderActionPill(ui.microsoftPills, "Direction: " + pp.directionLabel, pp.direction === "inbound" ? "ok" : "warn", {
+            type: "jumpHeader",
+            hint: "Proofpoint direction indicates whether the gateway classified the message as inbound or outbound. This is supporting context only and should be interpreted alongside the spam details score.",
+            headerKeys: ["x-proofpoint-spam-details"],
+            fallbackId: "spamSection"
+          });
+        }
+        if (pp.guid) {
+          msCount += 1;
+          renderActionPill(ui.microsoftPills, "GUID: " + pp.guid, "muted", {
+            type: "jumpHeader",
+            hint: "Proofpoint message GUID used to correlate the message across gateway logs. If an Original GUID is present and differs, review that upstream value as well.",
+            headerKeys: ["x-proofpoint-guid", "x-proofpoint-original-guid"],
+            fallbackId: "spamSection"
+          });
+        }
+        if (pp.summary) {
+          msCount += 1;
+          const spamSummaryText = pp.summary.length > 90 ? pp.summary.slice(0, 87) + "..." : pp.summary;
+          renderActionPill(ui.microsoftPills, "Spam Details: " + spamSummaryText, classifyProofpointSpam(pp.parsed), {
+            type: "jumpHeader",
+            hint: "Parsed Proofpoint spam detail fields such as rule, policy, score, impostor score, bulk score, phish score, route, reason, and scan count. Click to jump to the original header value.",
+            headerKeys: ["x-proofpoint-spam-details"],
+            fallbackId: "spamSection"
+          });
+        }
+      }
+
       if (ms.hasForefront && (ms.sfv || ms.cat)) {
         msCount += 1;
         renderActionPill(ui.microsoftPills, microsoftVerdictText(ms), ms.cat && ms.cat !== "NONE" ? classifyCat(ms.cat) : classifySfv(ms.sfv), {
@@ -3146,7 +3345,8 @@ If Python is not installed on this machine:
           fallbackId: "spamSection"
         });
       }
-      ui.microsoftSectionBlock.style.display = msCount ? "block" : "none";
+      ui.microsoftSectionBlock.style.display = pp.hasSignals ? "none" : (msCount ? "block" : "none");
+      ui.gatewaySectionBlock.style.display = gatewayCount || pp.hasSignals ? "block" : "none";
 
       const routeNodes = buildRouteStoryNodes(parsed.hops);
       if (routeNodes.length) {
@@ -3262,10 +3462,11 @@ If Python is not installed on this machine:
         ? (hops[hops.length - 1].timestampMs - hops[0].timestampMs)
         : null;
       const policySignals = extractPolicySignals(headers);
+      const proofpoint = parseProofpointSignals(headers);
       const findings = evaluateFindings(auth, envelope, hops, policySignals, mailOrigin, headers);
-      const partial = { headers, auth, hops, envelope, findings, groupedHeaders, totalTransitMs, policySignals };
+      const partial = { headers, auth, hops, envelope, findings, groupedHeaders, totalTransitMs, policySignals, proofpoint };
       const narrativeSummary = buildNarrativeSummary(partial);
-      return { headers, auth, hops, envelope, findings, groupedHeaders, totalTransitMs, policySignals, narrativeSummary };
+      return { headers, auth, hops, envelope, findings, groupedHeaders, totalTransitMs, policySignals, proofpoint, narrativeSummary };
     }
 
     function analyze() {
