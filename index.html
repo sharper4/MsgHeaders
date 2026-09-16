@@ -602,28 +602,20 @@ If Python is not installed on this machine:
       display: none;
     }
 
-    .counter-badge {
-      position: fixed;
-      right: 121px;
-      bottom: 18px;
-      z-index: 19;
-      border: 1px solid #355a7b;
-      background: rgba(9, 26, 40, 0.88);
-      color: #9fc5e3;
-      border-radius: 999px;
-      padding: 4px 10px;
-      font-size: 0.7rem;
-      line-height: 1;
-      letter-spacing: 0.2px;
-      pointer-events: none;
-      user-select: none;
-    }
-
-    .build-badge {
+    .status-badge-stack {
       position: fixed;
       right: 18px;
       bottom: 18px;
       z-index: 19;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    .counter-badge,
+    .build-badge {
       border: 1px solid #355a7b;
       background: rgba(9, 26, 40, 0.88);
       color: #9fc5e3;
@@ -632,8 +624,7 @@ If Python is not installed on this machine:
       font-size: 0.7rem;
       line-height: 1;
       letter-spacing: 0.2px;
-      pointer-events: none;
-      user-select: none;
+      white-space: nowrap;
     }
 
     .author-badge {
@@ -800,13 +791,15 @@ If Python is not installed on this machine:
 
     </section>
     <button id="scrollTopBtn" class="floating-action is-hidden" type="button">Go To Top</button>
-    <div id="pageCounterBadge" class="counter-badge" aria-label="Page usage counter">Views 500</div>
-    <div id="buildBadge" class="build-badge" aria-label="Build version">Build</div>
+    <div class="status-badge-stack">
+      <div id="pageCounterBadge" class="counter-badge" aria-label="Page usage counter">Views 500</div>
+      <div id="buildBadge" class="build-badge" aria-label="Build version">Build</div>
+    </div>
     <a id="authorBadge" class="author-badge" href="https://www.linkedin.com/in/scottharper4" target="_blank" rel="noopener noreferrer" aria-label="Written by Scott Harper">Written by Scott Harper</a>
   </main>
 
     <script>
-    const APP_BUILD = "2026.09.16.1845";
+    const APP_BUILD = "2026.09.16.1925";
     const PAGE_COUNTER_START = 500;
     const PAGE_COUNTER_KEY = "msgheaders-page-counter";
 
@@ -1140,18 +1133,19 @@ If Python is not installed on this machine:
       return /(spam|phish|bulk|scl|bcl|pcl|antispam|malware|threat|defender)/i.test(key);
     }
 
+    function isHiddenProofpointHeader(key) {
+      const lowered = String(key || "").toLowerCase();
+      return /^(x-proofpoint-(guid|original-guid|banner-trigger|banner|spam-details|spam-info|spam-details-enc))$/i.test(lowered) ||
+        /^(x-proofpoint-.*(?:guid|banner|details|info))$/i.test(lowered);
+    }
+
     function splitHeaders(headers) {
       const spamHeaders = {};
       const otherHeaders = {};
       const sortedKeys = Object.keys(headers).sort();
-      const hiddenProofpointHeaders = [/^x-proofpoint-spam-info$/i, /^x-proofpoint-spam-details-enc$/i];
 
       for (const key of sortedKeys) {
-        const isHiddenProofpointHeader = hiddenProofpointHeaders.some(function (pattern) {
-          return pattern.test(key);
-        });
-
-        if (isSecurityOrSpamHeader(key) && !isHiddenProofpointHeader) {
+        if (isSecurityOrSpamHeader(key) && !isHiddenProofpointHeader(key)) {
           spamHeaders[key] = headers[key];
         } else {
           otherHeaders[key] = headers[key];
@@ -1310,12 +1304,19 @@ If Python is not installed on this machine:
         const suppressedTelemetryKeys = new Set([
           "x-ironport-av",
           "x-ironport-mid",
-          "x-ironport-remoteip"
+          "x-ironport-remoteip",
+          "x-proofpoint-guid",
+          "x-proofpoint-original-guid",
+          "x-proofpoint-banner-trigger",
+          "x-proofpoint-banner",
+          "x-proofpoint-spam-details",
+          "x-proofpoint-spam-info",
+          "x-proofpoint-spam-details-enc"
         ]);
         const telemetryKeys = Object.keys(headers || {})
           .filter(function (key) {
             const lowered = String(key || "").toLowerCase();
-            if (suppressedTelemetryKeys.has(lowered)) {
+            if (suppressedTelemetryKeys.has(lowered) || isHiddenProofpointHeader(key)) {
               return false;
             }
             return /^(x-(ironport|threatscanner|proofpoint|mimecast|barracuda))/i.test(lowered);
@@ -1496,24 +1497,15 @@ If Python is not installed on this machine:
 
     function proofpointFieldLabel(key) {
       const labelMap = {
-        rule: "Rule",
-        policy: "Policy",
         score: "Score",
         impostorscore: "Impostor Score",
         malwarescore: "Malware Score",
         bulkscore: "Bulk Score",
         clscore: "CL Score",
-        suspectscore: "Suspect Score",
         spamscore: "Spam Score",
         priorityscore: "Priority Score",
-        adultscore: "Adult Score",
-        lowpriorityscore: "Low Priority Score",
         phishscore: "Phish Score",
-        classifier: "Classifier",
-        authscore: "Auth Score",
-        route: "Route",
         adjust: "Adjust",
-        reason: "Reason",
         scancount: "Scan Count"
       };
       return labelMap[String(key || "").toLowerCase()] || String(key || "").replace(/_/g, " ").replace(/\b([a-z])/g, function (match) { return match.toUpperCase(); });
@@ -1521,49 +1513,31 @@ If Python is not installed on this machine:
 
     function proofpointFieldHint(key, value) {
       const details = {
-        rule: "Proofpoint rule classification. This is the triggered rule or classification bucket the gateway matched for the message.",
-        policy: "Message policy context used by the gateway at evaluation time. This helps distinguish inbound versus outbound handling and policy actions.",
-        score: "Overall proofpoint confidence score for this message as measured by the spam engine. Higher values indicate stronger anti-spam suspicion, but context matters.",
+        score: "Overall Proofpoint score for the message. Higher numbers reflect stronger spam risk, but use it alongside the more specific sub-scores.",
         impostorscore: "Impostor score reflects similarity to a spoofing or impersonation pattern. Higher values suggest stronger impersonation concerns.",
         malwarescore: "Malware score indicates the gateway's malware weighting. It is a support signal, not a definitive malware verdict by itself.",
-        bulkscore: "Bulk/graymail score reflects marketing or bulk-style traffic patterns. It is a supportive signal and not identical to a spam verdict.",
-        clscore: "CL score is a close-in/cluster or classifier score used by the anti-spam engine. Values are vendor-specific and should be interpreted with the rule and overall score.",
-        suspectscore: "Suspect score flag indicates the system saw a suspicious or atypical pattern in message handling. It is a supporting score, not a standalone verdict.",
+        bulkscore: "Bulk/graymail score reflects marketing or bulk-style traffic patterns. It is a supporting signal and not identical to a spam verdict.",
+        clscore: "CL score is a vendor-specific classifier score used by the gateway. It is a supporting signal rather than a standalone verdict.",
         spamscore: "Spam score describes the message's direct spam weighting. A higher score raises suspicion, while 0 often means a clean or non-spam classification.",
-        priorityscore: "Priority score is a relative weighting used by the gateway to decide how strongly the message should be considered urgent or policy-relevant.",
-        adultscore: "Adult content score indicates a potential adult-content classification signal. It is typically supporting context rather than a direct malware verdict.",
-        lowpriorityscore: "Low priority score indicates a lower-priority or lower-severity signal in the gateway's rule engine. It is usually a supporting signal.",
+        priorityscore: "Priority score is a relative weighting used by the gateway to rank the severity or handling priority of the message.",
         phishscore: "Phish score reflects phishing likelihood from the gateway's content, URL, or sender heuristics. Higher values increase phishing concern.",
-        classifier: "Classifier name or rule family used to categorize the message. This helps explain which engine bucket produced the verdict.",
-        authscore: "Authentication score indicates how heavily the message was weighted by gateway auth-related heuristics. It is supplemental context for message trust.",
-        route: "Route is the gateway's directional context (for example, inbound or outbound) and indicates how the message was evaluated in the inbound flow.",
-        adjust: "Adjust value reflects a post-classification tuning adjustment applied by the gateway engine.",
-        reason: "Reason code shows the dominant gateway logic or condition that influenced the classification.",
-        scancount: "Scan count indicates how many inspection passes or analysis cycles the gateway used on the message."
+        adjust: "Adjust is an internal Proofpoint weighting adjustment applied during policy evaluation. It is only meaningful when non-zero, and often serves as a supporting signal rather than a primary verdict.",
+        scancount: "Scan count indicates how many gateway scanning passes or engines evaluated the message. It matters only when it is greater than 1, since a single scan is routine and not highly informative."
       };
-      return details[String(key || "").toLowerCase()] || "Proofpoint spam detail value. Scores are vendor-specific and should be interpreted with the rule, policy, and overall score. Raw value: " + value + ".";
+      return details[String(key || "").toLowerCase()] || "Proofpoint spam detail value. Scores are vendor-specific and should be interpreted with the full context. Raw value: " + value + ".";
     }
 
     function renderProofpointDetailPills(container, details) {
       const allowedKeys = [
-        "rule",
-        "policy",
         "score",
+        "clscore",
+        "priorityscore",
         "impostorscore",
         "malwarescore",
         "bulkscore",
-        "clscore",
-        "suspectscore",
         "spamscore",
-        "priorityscore",
-        "adultscore",
-        "lowpriorityscore",
         "phishscore",
-        "classifier",
-        "authscore",
-        "route",
         "adjust",
-        "reason",
         "scancount"
       ];
 
@@ -1571,9 +1545,36 @@ If Python is not installed on this machine:
         if (!details || details[key] === undefined || details[key] === null || details[key] === "") {
           continue;
         }
-        const label = proofpointFieldLabel(key);
+
         const rawValue = String(details[key]).trim();
-        const tone = /score|suspect|phish|spam|bulk|priority|adult|malware|impostor|classifier|reason/.test(key) ? (Number.parseInt(rawValue, 10) > 0 ? "warn" : "ok") : "muted";
+        if (!rawValue) {
+          continue;
+        }
+
+        if (key === "adjust") {
+          const numericValue = Number.parseInt(rawValue, 10);
+          if (Number.isNaN(numericValue) || numericValue === 0) {
+            continue;
+          }
+        }
+
+        if (key === "scancount") {
+          const numericValue = Number.parseInt(rawValue, 10);
+          if (Number.isNaN(numericValue) || numericValue <= 1) {
+            continue;
+          }
+        }
+
+        const label = proofpointFieldLabel(key);
+        let tone = "muted";
+        if (key === "adjust") {
+          tone = Number.parseInt(rawValue, 10) !== 0 ? "warn" : "ok";
+        } else if (key === "scancount") {
+          tone = Number.parseInt(rawValue, 10) > 1 ? "warn" : "ok";
+        } else {
+          tone = /score|phish|spam|bulk|priority|malware|impostor/.test(key) ? (Number.parseInt(rawValue, 10) > 0 ? "warn" : "ok") : "muted";
+        }
+
         renderActionPill(
           container,
           label + ": " + rawValue,
@@ -2816,10 +2817,25 @@ If Python is not installed on this machine:
       const gatewayLabel = proofpoint.hasSignals ? "Proofpoint Security Signals" : "Receiving Gateway Signals";
       const proofpointFieldPills = proofpoint.parsed ? Object.entries(proofpoint.parsed)
         .filter(function ([key, value]) {
-          return !!value && ["rule", "policy", "score", "impostorscore", "malwarescore", "bulkscore", "clscore", "suspectscore", "spamscore", "priorityscore", "adultscore", "lowpriorityscore", "phishscore", "classifier", "authscore", "route", "adjust", "reason", "scancount"].includes(key);
+          if (!value || !["score", "impostorscore", "malwarescore", "bulkscore", "clscore", "spamscore", "priorityscore", "phishscore", "adjust", "scancount"].includes(key)) {
+            return false;
+          }
+          if (key === "adjust") {
+            return Number.parseInt(value, 10) !== 0;
+          }
+          if (key === "scancount") {
+            return Number.parseInt(value, 10) > 1;
+          }
+          return true;
         })
         .map(function ([key, value]) {
-          return exportPillHtml(proofpointFieldLabel(key) + ": " + value, Number.parseInt(value, 10) > 0 ? "warn" : "ok");
+          const numericValue = Number.parseInt(value, 10);
+          const tone = key === "adjust"
+            ? (numericValue !== 0 ? "warn" : "ok")
+            : key === "scancount"
+              ? (numericValue > 1 ? "warn" : "ok")
+              : (numericValue > 0 ? "warn" : "ok");
+          return exportPillHtml(proofpointFieldLabel(key) + ": " + value, tone);
         }).join("") : "";
       const microsoftPills = [
         proofpointFieldPills,
