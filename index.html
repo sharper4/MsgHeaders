@@ -799,7 +799,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.09.16.2040";
+    const APP_BUILD = "2026.09.16.2105";
     const PAGE_COUNTER_START = 500;
     const PAGE_COUNTER_KEY = "msgheaders-page-counter";
 
@@ -1535,7 +1535,6 @@ If Python is not installed on this machine:
       const allowedKeys = [
         "score",
         "clscore",
-        "priorityscore",
         "impostorscore",
         "malwarescore",
         "bulkscore",
@@ -1543,6 +1542,7 @@ If Python is not installed on this machine:
         "phishscore",
         "lowpriorityscore",
         "adultscore",
+        "priorityscore",
         "adjust",
         "scancount"
       ];
@@ -1577,8 +1577,10 @@ If Python is not installed on this machine:
           tone = Number.parseInt(rawValue, 10) !== 0 ? "warn" : "ok";
         } else if (key === "scancount") {
           tone = Number.parseInt(rawValue, 10) > 1 ? "warn" : "ok";
-        } else if (/clscore|priorityscore|lowpriorityscore|adultscore/.test(key)) {
+        } else if (/clscore|lowpriorityscore|adultscore/.test(key)) {
           tone = Number.parseInt(rawValue, 10) > 0 ? "muted" : "ok";
+        } else if (key === "priorityscore") {
+          tone = "ok";
         } else {
           tone = /score|phish|spam|bulk|malware|impostor/.test(key) ? (Number.parseInt(rawValue, 10) > 0 ? "warn" : "ok") : "muted";
         }
