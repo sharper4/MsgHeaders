@@ -799,7 +799,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.09.16.1925";
+    const APP_BUILD = "2026.09.16.2015";
     const PAGE_COUNTER_START = 500;
     const PAGE_COUNTER_KEY = "msgheaders-page-counter";
 
@@ -2490,11 +2490,8 @@ If Python is not installed on this machine:
           node.hop > inboundStartHop ||
           (node.hop === inboundStartHop && (node.side === "by" || node.side === "recipient"))
         );
-        if (isInbound) {
-          return "<span class=\"route-node-internal\">" + label + "</span>";
-        }
         if (node.hop > 0) {
-          return "<button type=\"button\" class=\"route-node-link\" data-hop=\"" + node.hop + "\" title=\"Jump to Received hop #" + node.hop + "\">" + label + "</button>";
+          return "<button type=\"button\" class=\"route-node-link" + (isInbound ? " route-node-internal" : "") + "\" data-hop=\"" + node.hop + "\" title=\"Jump to Received hop #" + node.hop + "\">" + label + "</button>";
         }
         return label;
       }).join(" -> ");
