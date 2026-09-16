@@ -528,6 +528,31 @@ If Python is not installed on this machine:
       color: #d7eaff;
     }
 
+    .route-node-link {
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      padding: 0;
+      margin: 0;
+      font: inherit;
+      line-height: inherit;
+      cursor: pointer;
+      text-decoration: none;
+      border-radius: 0;
+      box-shadow: none;
+      transform: none;
+      opacity: 1;
+    }
+
+    .route-node-link:hover,
+    .route-node-link:focus-visible {
+      transform: none;
+      box-shadow: none;
+      opacity: 1;
+      outline: none;
+    }
+
     .route-node-internal {
       color: #9fc5e3;
     }
@@ -579,8 +604,8 @@ If Python is not installed on this machine:
 
     .counter-badge {
       position: fixed;
-      right: 18px;
-      bottom: 58px;
+      right: 121px;
+      bottom: 18px;
       z-index: 19;
       border: 1px solid #355a7b;
       background: rgba(9, 26, 40, 0.88);
@@ -781,7 +806,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.09.16.1706";
+    const APP_BUILD = "2026.09.16.1845";
     const PAGE_COUNTER_START = 500;
     const PAGE_COUNTER_KEY = "msgheaders-page-counter";
 
@@ -1467,6 +1492,100 @@ If Python is not installed on this machine:
         return "warn";
       }
       return "ok";
+    }
+
+    function proofpointFieldLabel(key) {
+      const labelMap = {
+        rule: "Rule",
+        policy: "Policy",
+        score: "Score",
+        impostorscore: "Impostor Score",
+        malwarescore: "Malware Score",
+        bulkscore: "Bulk Score",
+        clscore: "CL Score",
+        suspectscore: "Suspect Score",
+        spamscore: "Spam Score",
+        priorityscore: "Priority Score",
+        adultscore: "Adult Score",
+        lowpriorityscore: "Low Priority Score",
+        phishscore: "Phish Score",
+        classifier: "Classifier",
+        authscore: "Auth Score",
+        route: "Route",
+        adjust: "Adjust",
+        reason: "Reason",
+        scancount: "Scan Count"
+      };
+      return labelMap[String(key || "").toLowerCase()] || String(key || "").replace(/_/g, " ").replace(/\b([a-z])/g, function (match) { return match.toUpperCase(); });
+    }
+
+    function proofpointFieldHint(key, value) {
+      const details = {
+        rule: "Proofpoint rule classification. This is the triggered rule or classification bucket the gateway matched for the message.",
+        policy: "Message policy context used by the gateway at evaluation time. This helps distinguish inbound versus outbound handling and policy actions.",
+        score: "Overall proofpoint confidence score for this message as measured by the spam engine. Higher values indicate stronger anti-spam suspicion, but context matters.",
+        impostorscore: "Impostor score reflects similarity to a spoofing or impersonation pattern. Higher values suggest stronger impersonation concerns.",
+        malwarescore: "Malware score indicates the gateway's malware weighting. It is a support signal, not a definitive malware verdict by itself.",
+        bulkscore: "Bulk/graymail score reflects marketing or bulk-style traffic patterns. It is a supportive signal and not identical to a spam verdict.",
+        clscore: "CL score is a close-in/cluster or classifier score used by the anti-spam engine. Values are vendor-specific and should be interpreted with the rule and overall score.",
+        suspectscore: "Suspect score flag indicates the system saw a suspicious or atypical pattern in message handling. It is a supporting score, not a standalone verdict.",
+        spamscore: "Spam score describes the message's direct spam weighting. A higher score raises suspicion, while 0 often means a clean or non-spam classification.",
+        priorityscore: "Priority score is a relative weighting used by the gateway to decide how strongly the message should be considered urgent or policy-relevant.",
+        adultscore: "Adult content score indicates a potential adult-content classification signal. It is typically supporting context rather than a direct malware verdict.",
+        lowpriorityscore: "Low priority score indicates a lower-priority or lower-severity signal in the gateway's rule engine. It is usually a supporting signal.",
+        phishscore: "Phish score reflects phishing likelihood from the gateway's content, URL, or sender heuristics. Higher values increase phishing concern.",
+        classifier: "Classifier name or rule family used to categorize the message. This helps explain which engine bucket produced the verdict.",
+        authscore: "Authentication score indicates how heavily the message was weighted by gateway auth-related heuristics. It is supplemental context for message trust.",
+        route: "Route is the gateway's directional context (for example, inbound or outbound) and indicates how the message was evaluated in the inbound flow.",
+        adjust: "Adjust value reflects a post-classification tuning adjustment applied by the gateway engine.",
+        reason: "Reason code shows the dominant gateway logic or condition that influenced the classification.",
+        scancount: "Scan count indicates how many inspection passes or analysis cycles the gateway used on the message."
+      };
+      return details[String(key || "").toLowerCase()] || "Proofpoint spam detail value. Scores are vendor-specific and should be interpreted with the rule, policy, and overall score. Raw value: " + value + ".";
+    }
+
+    function renderProofpointDetailPills(container, details) {
+      const allowedKeys = [
+        "rule",
+        "policy",
+        "score",
+        "impostorscore",
+        "malwarescore",
+        "bulkscore",
+        "clscore",
+        "suspectscore",
+        "spamscore",
+        "priorityscore",
+        "adultscore",
+        "lowpriorityscore",
+        "phishscore",
+        "classifier",
+        "authscore",
+        "route",
+        "adjust",
+        "reason",
+        "scancount"
+      ];
+
+      for (const key of allowedKeys) {
+        if (!details || details[key] === undefined || details[key] === null || details[key] === "") {
+          continue;
+        }
+        const label = proofpointFieldLabel(key);
+        const rawValue = String(details[key]).trim();
+        const tone = /score|suspect|phish|spam|bulk|priority|adult|malware|impostor|classifier|reason/.test(key) ? (Number.parseInt(rawValue, 10) > 0 ? "warn" : "ok") : "muted";
+        renderActionPill(
+          container,
+          label + ": " + rawValue,
+          tone,
+          {
+            type: "jumpHeader",
+            hint: proofpointFieldHint(key, rawValue),
+            headerKeys: ["x-proofpoint-spam-details"],
+            fallbackId: "spamSection"
+          }
+        );
+      }
     }
 
     function buildNarrativeSummary(parsed) {
@@ -2359,16 +2478,30 @@ If Python is not installed on this machine:
 
     function renderRouteStory(routeNodes, inboundStartHop) {
       return routeNodes.map(function (node) {
-        const safeNode = escapeHtml(node.label);
+        const label = escapeHtml(node.label);
         const isInbound = inboundStartHop > 0 && (
           node.hop > inboundStartHop ||
           (node.hop === inboundStartHop && (node.side === "by" || node.side === "recipient"))
         );
         if (isInbound) {
-          return "<span class=\"route-node-internal\">" + safeNode + "</span>";
+          return "<span class=\"route-node-internal\">" + label + "</span>";
         }
-        return safeNode;
+        if (node.hop > 0) {
+          return "<button type=\"button\" class=\"route-node-link\" data-hop=\"" + node.hop + "\" title=\"Jump to Received hop #" + node.hop + "\">" + label + "</button>";
+        }
+        return label;
       }).join(" -> ");
+    }
+
+    function bindRouteNodeClicks() {
+      document.querySelectorAll(".route-node-link").forEach(function (link) {
+        link.addEventListener("click", function () {
+          const hopNumber = Number.parseInt(link.dataset.hop, 10);
+          if (Number.isFinite(hopNumber)) {
+            jumpToHop(hopNumber, "routingSection");
+          }
+        });
+      });
     }
 
     function renderPill(container, text, tone, hint) {
@@ -2681,10 +2814,15 @@ If Python is not installed on this machine:
 
       const proofpoint = parsed.proofpoint || {};
       const gatewayLabel = proofpoint.hasSignals ? "Proofpoint Security Signals" : "Receiving Gateway Signals";
+      const proofpointFieldPills = proofpoint.parsed ? Object.entries(proofpoint.parsed)
+        .filter(function ([key, value]) {
+          return !!value && ["rule", "policy", "score", "impostorscore", "malwarescore", "bulkscore", "clscore", "suspectscore", "spamscore", "priorityscore", "adultscore", "lowpriorityscore", "phishscore", "classifier", "authscore", "route", "adjust", "reason", "scancount"].includes(key);
+        })
+        .map(function ([key, value]) {
+          return exportPillHtml(proofpointFieldLabel(key) + ": " + value, Number.parseInt(value, 10) > 0 ? "warn" : "ok");
+        }).join("") : "";
       const microsoftPills = [
-        proofpoint.directionLabel ? exportPillHtml("Direction: " + proofpoint.directionLabel, proofpoint.direction === "inbound" ? "ok" : "warn") : "",
-        proofpoint.guid ? exportPillHtml("GUID: " + proofpoint.guid, "muted") : "",
-        proofpoint.summary ? exportPillHtml("Spam Details: " + (proofpoint.summary.length > 90 ? proofpoint.summary.slice(0, 87) + "..." : proofpoint.summary), classifyProofpointSpam(proofpoint.parsed)) : "",
+        proofpointFieldPills,
         ms.scl ? exportPillHtml("SCL: " + ms.scl, classifyScl(ms.scl)) : "",
         ms.bcl ? exportPillHtml("BCL: " + ms.bcl, classifyBcl(ms.bcl)) : "",
         ms.pcl ? exportPillHtml("PCL: " + ms.pcl, classifyPcl(ms.pcl)) : "",
@@ -3088,49 +3226,8 @@ If Python is not installed on this machine:
       });
 
       if (pp.hasSignals) {
-        if (pp.directionLabel) {
-          gatewayCount += 1;
-          renderActionPill(
-            ui.gatewayPills,
-            "Direction: " + pp.directionLabel,
-            pp.direction === "inbound" ? "ok" : "warn",
-            {
-              type: "jumpHeader",
-              hint: "Proofpoint direction indicates whether the gateway classified the message as inbound or outbound. This is a useful flow indicator but should be interpreted alongside the detailed spam score.",
-              headerKeys: ["x-proofpoint-spam-details"],
-              fallbackId: "spamSection"
-            }
-          );
-        }
-        if (pp.guid) {
-          gatewayCount += 1;
-          renderActionPill(
-            ui.gatewayPills,
-            "GUID: " + pp.guid,
-            "muted",
-            {
-              type: "jumpHeader",
-              hint: "Proofpoint message GUID used to correlate the message across gateway logs. If an Original GUID is present and differs, review that upstream value as well.",
-              headerKeys: ["x-proofpoint-guid", "x-proofpoint-original-guid"],
-              fallbackId: "spamSection"
-            }
-          );
-        }
-        if (pp.summary) {
-          gatewayCount += 1;
-          const spamSummaryText = pp.summary.length > 90 ? pp.summary.slice(0, 87) + "..." : pp.summary;
-          renderActionPill(
-            ui.gatewayPills,
-            "Spam Details: " + spamSummaryText,
-            classifyProofpointSpam(pp.parsed),
-            {
-              type: "jumpHeader",
-              hint: "Parsed Proofpoint spam detail fields such as rule, policy, score, impostor score, bulk score, phish score, route, reason, and scan count. Click to jump to the original header value.",
-              headerKeys: ["x-proofpoint-spam-details"],
-              fallbackId: "spamSection"
-            }
-          );
-        }
+        gatewayCount += 1;
+        renderProofpointDetailPills(ui.gatewayPills, pp.parsed);
       }
 
       if (gateway.gatewayPolicy) {
@@ -3239,38 +3336,7 @@ If Python is not installed on this machine:
       let msCount = 0;
       const gatewayHeading = ui.microsoftSectionBlock.querySelector("h3");
       if (gatewayHeading) {
-        gatewayHeading.textContent = parsed.proofpoint && parsed.proofpoint.hasSignals ? "Proofpoint Security Signals" : "Gateway Security Signals";
-      }
-
-      if (pp.hasSignals) {
-        if (pp.directionLabel) {
-          msCount += 1;
-          renderActionPill(ui.microsoftPills, "Direction: " + pp.directionLabel, pp.direction === "inbound" ? "ok" : "warn", {
-            type: "jumpHeader",
-            hint: "Proofpoint direction indicates whether the gateway classified the message as inbound or outbound. This is supporting context only and should be interpreted alongside the spam details score.",
-            headerKeys: ["x-proofpoint-spam-details"],
-            fallbackId: "spamSection"
-          });
-        }
-        if (pp.guid) {
-          msCount += 1;
-          renderActionPill(ui.microsoftPills, "GUID: " + pp.guid, "muted", {
-            type: "jumpHeader",
-            hint: "Proofpoint message GUID used to correlate the message across gateway logs. If an Original GUID is present and differs, review that upstream value as well.",
-            headerKeys: ["x-proofpoint-guid", "x-proofpoint-original-guid"],
-            fallbackId: "spamSection"
-          });
-        }
-        if (pp.summary) {
-          msCount += 1;
-          const spamSummaryText = pp.summary.length > 90 ? pp.summary.slice(0, 87) + "..." : pp.summary;
-          renderActionPill(ui.microsoftPills, "Spam Details: " + spamSummaryText, classifyProofpointSpam(pp.parsed), {
-            type: "jumpHeader",
-            hint: "Parsed Proofpoint spam detail fields such as rule, policy, score, impostor score, bulk score, phish score, route, reason, and scan count. Click to jump to the original header value.",
-            headerKeys: ["x-proofpoint-spam-details"],
-            fallbackId: "spamSection"
-          });
-        }
+        gatewayHeading.textContent = "Microsoft Security Signals";
       }
 
       if (ms.hasForefront && (ms.sfv || ms.cat)) {
@@ -3345,12 +3411,13 @@ If Python is not installed on this machine:
           fallbackId: "spamSection"
         });
       }
-      ui.microsoftSectionBlock.style.display = pp.hasSignals ? "none" : (msCount ? "block" : "none");
+      ui.microsoftSectionBlock.style.display = msCount ? "block" : "none";
       ui.gatewaySectionBlock.style.display = gatewayCount || pp.hasSignals ? "block" : "none";
 
       const routeNodes = buildRouteStoryNodes(parsed.hops);
       if (routeNodes.length) {
         ui.routeInline.innerHTML = "<strong>Route:</strong> " + renderRouteStory(routeNodes, inboundStartHop);
+        bindRouteNodeClicks();
       } else {
         ui.routeInline.textContent = "Route: n/a";
       }
