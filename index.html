@@ -799,7 +799,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.09.16.2105";
+    const APP_BUILD = "2026.09.16.2130";
     const PAGE_COUNTER_START = 500;
     const PAGE_COUNTER_KEY = "msgheaders-page-counter";
 
@@ -3116,7 +3116,21 @@ If Python is not installed on this machine:
       resetHopChainExpansion();
 
       const delaySeverityTone = mostSevereDelayTone(parsed.hops);
-      const mailOrigin = determineMailOrigin(parsed);
+      const heuristicMailOrigin = determineMailOrigin(parsed);
+      const proofpointDirection = String(parsed.proofpoint && parsed.proofpoint.direction || "").toLowerCase();
+      const mailOrigin = proofpointDirection === "inbound"
+        ? {
+            value: "External",
+            tone: "ok",
+            reason: "Proofpoint route=inbound directly identifies the message as entering the organization"
+          }
+        : proofpointDirection === "outbound"
+          ? {
+              value: "Internal",
+              tone: "ok",
+              reason: "Proofpoint route=outbound directly identifies the message as leaving the organization"
+            }
+          : heuristicMailOrigin;
       const inboundStartHop = detectInboundStartHop(parsed.hops, parsed.policySignals);
 
       renderActionPill(
@@ -3172,8 +3186,10 @@ If Python is not installed on this machine:
         mailOrigin.tone,
         {
           type: "jumpHeader",
-          hint: "Origin guess: " + mailOrigin.reason + ". Click to jump to source headers.",
-          headerKeys: ["x-originating-ip", "x-ms-exchange-organization-authas", "received", "from"],
+          hint: (proofpointDirection ? "Direct gateway origin: " : "Origin guess: ") + mailOrigin.reason + ". Click to jump to source headers.",
+          headerKeys: proofpointDirection
+            ? ["x-proofpoint-spam-details", "x-proofpoint-spam-info"]
+            : ["x-originating-ip", "x-ms-exchange-organization-authas", "received", "from"],
           fallbackId: "routingSection"
         }
       );
@@ -3623,4 +3639,3 @@ If Python is not installed on this machine:
   </script>
 </body>
 </html>
-
