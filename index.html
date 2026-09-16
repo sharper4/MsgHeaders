@@ -799,7 +799,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.09.16.2015";
+    const APP_BUILD = "2026.09.16.2040";
     const PAGE_COUNTER_START = 500;
     const PAGE_COUNTER_KEY = "msgheaders-page-counter";
 
@@ -1501,11 +1501,11 @@ If Python is not installed on this machine:
         impostorscore: "Impostor Score",
         malwarescore: "Malware Score",
         bulkscore: "Bulk Score",
-        clscore: "CL Score",
+        clscore: "CL Score (classifier)",
         spamscore: "Spam Score",
-        priorityscore: "Priority Score",
+        priorityscore: "Priority Score (internal)",
         phishscore: "Phish Score",
-        lowpriorityscore: "Low Priority Score",
+        lowpriorityscore: "Low Priority Score (internal)",
         adultscore: "Adult Score",
         adjust: "Adjust",
         scancount: "Scan Count"
@@ -1519,9 +1519,9 @@ If Python is not installed on this machine:
         impostorscore: "Impostor score reflects similarity to a spoofing or impersonation pattern. Higher values suggest stronger impersonation concerns.",
         malwarescore: "Malware score indicates the gateway's malware weighting. It is a support signal, not a definitive malware verdict by itself.",
         bulkscore: "Bulk/graymail score reflects marketing or bulk-style traffic patterns. It is a supporting signal and not identical to a spam verdict.",
-        clscore: "CL score is a vendor-specific classifier score used by the gateway. It is a supporting signal rather than a standalone verdict.",
+        clscore: "CL score is ProofPoint's internal classifier score. It is a supporting, vendor-specific score rather than a direct verdict. Use it alongside the actual spam/phish/bulk scores when assessing risk.",
         spamscore: "Spam score describes the message's direct spam weighting. A higher score raises suspicion, while 0 often means a clean or non-spam classification.",
-        priorityscore: "Priority score is a relative weighting used by the gateway to rank the severity or handling priority of the message.",
+        priorityscore: "Priority score is an internal weighting used to rank handling priority. It is not a verdict by itself; non-zero values indicate the gateway gave the message additional attention, but the real meaning should be read with the Spam, Phish, and Bulk scores.",
         phishscore: "Phish score reflects phishing likelihood from the gateway's content, URL, or sender heuristics. Higher values increase phishing concern.",
         lowpriorityscore: "Low-priority score is a supporting Proofpoint signal used to distinguish lower-priority but still notable messages from clear spam or phishing traffic.",
         adultscore: "Adult-content score reflects the gateway's adult/explicit-content weighting. It is a supporting signal, not a trust or malware verdict by itself.",
@@ -1577,8 +1577,10 @@ If Python is not installed on this machine:
           tone = Number.parseInt(rawValue, 10) !== 0 ? "warn" : "ok";
         } else if (key === "scancount") {
           tone = Number.parseInt(rawValue, 10) > 1 ? "warn" : "ok";
+        } else if (/clscore|priorityscore|lowpriorityscore|adultscore/.test(key)) {
+          tone = Number.parseInt(rawValue, 10) > 0 ? "muted" : "ok";
         } else {
-          tone = /score|phish|spam|bulk|priority|malware|impostor/.test(key) ? (Number.parseInt(rawValue, 10) > 0 ? "warn" : "ok") : "muted";
+          tone = /score|phish|spam|bulk|malware|impostor/.test(key) ? (Number.parseInt(rawValue, 10) > 0 ? "warn" : "ok") : "muted";
         }
 
         renderActionPill(
