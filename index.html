@@ -804,7 +804,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.09.18.1415";
+    const APP_BUILD = "2026.09.18.1450";
     const PAGE_COUNTER_START = 500;
     const PAGE_COUNTER_KEY = "msgheaders-page-counter";
 
@@ -2741,7 +2741,9 @@ If Python is not installed on this machine:
         ["Return-Path", parsed.envelope.returnPath],
         ["Reply-To", parsed.envelope.replyTo]
       ];
-      for (const [label, value] of detailRows) {
+      for (const [label, value] of detailRows.filter(function (row) {
+        return String(row[1] || "").trim() !== "";
+      })) {
         lines.push(label + ": " + (value || "n/a"));
       }
       lines.push("");
@@ -2851,11 +2853,11 @@ If Python is not installed on this machine:
         ["Reply-To", parsed.envelope.replyTo],
         ["X-Originating-IP", parsed.envelope.xOriginatingIp]
       ];
-      const longestHop = getLongestHop(parsed.hops);
-
       const detailTable = "<table style=\"border-collapse:collapse;width:100%;max-width:900px;\">" +
-        detailRows.map(function (row) {
-          return "<tr><td style=\"padding:4px 10px 4px 0;font-weight:700;vertical-align:top;white-space:nowrap;color:#486581;\">" + escapeHtml(row[0]) + "</td><td style=\"padding:4px 0;color:#102a43;\">" + escapeHtml(row[1] || "n/a") + "</td></tr>";
+        detailRows.filter(function (row) {
+          return String(row[1] || "").trim() !== "";
+        }).map(function (row) {
+          return "<tr><td style=\"padding:4px 10px 4px 0;font-weight:700;vertical-align:top;white-space:nowrap;color:#486581;\">" + escapeHtml(row[0]) + "</td><td style=\"padding:4px 0;color:#102a43;\">" + escapeHtml(String(row[1])) + "</td></tr>";
         }).join("") +
         "</table>";
 
@@ -2865,32 +2867,10 @@ If Python is not installed on this machine:
         }).join("") +
         "</ul>";
 
-      const receivedHopTable = "<table style=\"border-collapse:collapse;width:100%;font-size:12px;\">" +
-        "<thead><tr>" +
-        ["Hop", "Route Step", "From", "By", "IP", "Protocol", "Date", "Delay"].map(function (label) {
-          return "<th style=\"padding:5px;text-align:left;border-bottom:1px solid #d8e3ee;color:#486581;\">" + label + "</th>";
-        }).join("") +
-        "</tr></thead><tbody>" +
-        parsed.hops.map(function (hop) {
-          return "<tr>" + [
-            hop.hop,
-            routeStepForHop(hop),
-            hop.from,
-            hop.by,
-            hop.ip,
-            hop.protocol,
-            hop.date,
-            formatDuration(hop.delayMs)
-          ].map(function (value) {
-            return "<td style=\"padding:5px;border-bottom:1px solid #e7f0f8;vertical-align:top;\">" + escapeHtml(String(value || "n/a")) + "</td>";
-          }).join("") + "</tr>";
-        }).join("") +
-        "</tbody></table>";
-
       const routingHtml =
         displayedPillsHtml() +
-        "<div style=\"margin:12px 0 8px;padding:10px 12px;border:1px solid #d8e3ee;border-radius:10px;background:#ffffff;color:#102a43;\"><strong>Route:</strong> " + escapeHtml(buildRouteStory(parsed.hops).join(" -> ")) + "</div>" +
-        "<h4 style=\"margin:12px 0 8px;color:#12344d;\">Received Hop Chain</h4>" + receivedHopTable;
+        "<h4 style=\"margin:12px 0 8px;color:#12344d;\">Received Hop Chain</h4>" +
+        "<div style=\"padding:10px 12px;border:1px solid #d8e3ee;border-radius:10px;background:#ffffff;color:#102a43;\"><strong>Route:</strong> " + escapeHtml(buildRouteStory(parsed.hops).join(" -> ")) + "</div>";
 
       return "<div style=\"font-family:Segoe UI,Aptos,Tahoma,sans-serif;color:#102a43;line-height:1.45;background:#eef4f8;padding:18px;border-radius:16px;\">" +
         "<h2 style=\"margin:0 0 14px;color:#12344d;font-size:22px;\">Email Header Analyzer Results</h2>" +
