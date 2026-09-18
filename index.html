@@ -741,7 +741,12 @@ If Python is not installed on this machine:
           <div id="microsoftPills" class="status-row"></div>
         </section>
 
-        <section id="googleSectionBlock">
+                <section id="ironportSectionBlock">
+                  <h3 class="heading-line">IronPort Security Signals</h3>
+                  <div id="ironportPills" class="status-row"></div>
+                </section>
+
+                <section id="googleSectionBlock">
           <h3 class="heading-line">Google Security Signals</h3>
           <div id="googlePills" class="status-row"></div>
         </section>
@@ -799,7 +804,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.09.18.1305";
+    const APP_BUILD = "2026.09.18.1335";
     const PAGE_COUNTER_START = 500;
     const PAGE_COUNTER_KEY = "msgheaders-page-counter";
 
@@ -818,6 +823,7 @@ If Python is not installed on this machine:
       gatewaySectionTitle: document.getElementById("gatewaySectionTitle"),
       gatewayTrustNote: document.getElementById("gatewayTrustNote"),
       microsoftPills: document.getElementById("microsoftPills"),
+      ironportPills: document.getElementById("ironportPills"),
       googlePills: document.getElementById("googlePills"),
       details: document.getElementById("headerDetails"),
       findings: document.getElementById("findings"),
@@ -827,6 +833,7 @@ If Python is not installed on this machine:
       routeInline: document.getElementById("routeInline"),
       gatewaySectionBlock: document.getElementById("gatewaySectionBlock"),
       microsoftSectionBlock: document.getElementById("microsoftSectionBlock"),
+      ironportSectionBlock: document.getElementById("ironportSectionBlock"),
       googleSectionBlock: document.getElementById("googleSectionBlock"),
       spamHeaders: document.getElementById("spamHeaders"),
       otherHeaders: document.getElementById("otherHeaders"),
@@ -850,6 +857,7 @@ If Python is not installed on this machine:
 
     ui.gatewaySectionBlock.style.display = "none";
     ui.microsoftSectionBlock.style.display = "none";
+    ui.ironportSectionBlock.style.display = "none";
 
     let currentParsed = null;
     const COLLAPSED_HOP_ROWS = 10;
@@ -2875,14 +2883,20 @@ If Python is not installed on this machine:
       ].join("");
 
       const gatewayPills = [
-        (parsed.policySignals.gatewayTelemetry && parsed.policySignals.gatewayTelemetry.length)
-          ? exportPillHtml("Vendor Telemetry Headers: " + parsed.policySignals.gatewayTelemetry.length, "muted")
-          : "",
         parsed.policySignals.gatewayPolicy ? exportPillHtml("MailFlowPolicy: " + parsed.policySignals.gatewayPolicy, classifyGatewayPolicy(parsed.policySignals.gatewayPolicy)) : "",
         parsed.policySignals.threatScannerVerdict ? exportPillHtml("ThreatScannerVerdict: " + parsed.policySignals.threatScannerVerdict, classifyThreatScannerVerdict(parsed.policySignals.threatScannerVerdict)) : "",
         exportPillHtml("GrayMail: " + (parsed.policySignals.grayMailDetected ? "Detected" : "Not Detected"), parsed.policySignals.grayMailDetected ? "warn" : "ok"),
         parsed.policySignals.proxyWrappedUrlFound ? exportPillHtml("ProxyWrapped URL: Found", "warn") : ""
       ].join("");
+      const ironPortPills = (parsed.policySignals.gatewayTelemetry || [])
+        .filter(function (entry) {
+          return /^x-ironport-/i.test(entry.key) &&
+            !["x-ironport-mailflowpolicy", "x-ironport-gray"].includes(entry.key);
+        })
+        .map(function (entry) {
+          return exportPillHtml(entry.label + ": " + entry.value, entry.tone || "muted");
+        })
+        .join("");
 
       const detailTable = "<table style=\"border-collapse:collapse;width:100%;max-width:900px;\">" +
         detailRows.map(function (row) {
@@ -2900,6 +2914,7 @@ If Python is not installed on this machine:
         "<div style=\"margin:0 0 8px;\">" + authPills + "</div>" +
         (microsoftPills ? "<div style=\"margin:8px 0 0;\"><div style=\"margin:0 0 6px;font-size:12px;font-weight:700;color:#486581;text-transform:uppercase;letter-spacing:0.4px;\">" + escapeHtml(gatewayLabel) + "</div>" + microsoftPills + "</div>" : "") +
         (gatewayPills ? "<div style=\"margin:8px 0 0;\"><div style=\"margin:0 0 6px;font-size:12px;font-weight:700;color:#486581;text-transform:uppercase;letter-spacing:0.4px;\">" + escapeHtml(parsed.policySignals.primaryGatewayVendor ? ("Gateway Security Signals (" + parsed.policySignals.primaryGatewayVendor + ")") : "Gateway Security Signals") + "</div>" + gatewayPills + "</div>" : "") +
+        (ironPortPills ? "<div style=\"margin:8px 0 0;\"><div style=\"margin:0 0 6px;font-size:12px;font-weight:700;color:#486581;text-transform:uppercase;letter-spacing:0.4px;\">IronPort Signals</div>" + ironPortPills + "</div>" : "") +
         "<div style=\"margin:12px 0 0;padding:10px 12px;border:1px solid #d8e3ee;border-radius:10px;background:#ffffff;color:#102a43;\"><strong>Route:</strong> " + escapeHtml(buildRouteStory(parsed.hops).join(" -> ")) + "</div>";
 
       return "<div style=\"font-family:Segoe UI,Aptos,Tahoma,sans-serif;color:#102a43;line-height:1.45;background:#eef4f8;padding:18px;border-radius:16px;\">" +
@@ -3125,6 +3140,7 @@ If Python is not installed on this machine:
       ui.gatewayPills.innerHTML = "";
       ui.gatewayTrustNote.textContent = "";
       ui.microsoftPills.innerHTML = "";
+      ui.ironportPills.innerHTML = "";
       ui.googlePills.innerHTML = "";
       ui.details.innerHTML = "";
       ui.hopTable.innerHTML = "";
@@ -3281,7 +3297,12 @@ If Python is not installed on this machine:
         : (gateway.primaryGatewayVendor ? ("Gateway Security Signals (" + gateway.primaryGatewayVendor + ")") : "Gateway Security Signals");
       ui.gatewaySectionTitle.textContent = gatewayTitle;
       const gatewayTelemetryList = (gateway.gatewayTelemetry || []).filter(function (entry) {
-        return !["x-ironport-mailflowpolicy", "x-threatscannerverdict", "x-threatscanner-verdict", "x-ironport-gray"].includes(entry.key);
+        return !["x-ironport-mailflowpolicy", "x-threatscannerverdict", "x-threatscanner-verdict", "x-ironport-gray"].includes(entry.key) &&
+          !/^x-ironport-/i.test(entry.key);
+      });
+      const ironPortTelemetryList = (gateway.gatewayTelemetry || []).filter(function (entry) {
+        return /^x-ironport-/i.test(entry.key) &&
+          !["x-ironport-mailflowpolicy", "x-ironport-gray"].includes(entry.key);
       });
 
       if (pp.hasSignals) {
@@ -3471,6 +3492,20 @@ If Python is not installed on this machine:
         });
       }
       ui.microsoftSectionBlock.style.display = msCount ? "block" : "none";
+      for (const telemetry of ironPortTelemetryList) {
+        renderActionPill(
+          ui.ironportPills,
+          telemetry.label + ": " + telemetry.value,
+          telemetry.tone || "muted",
+          {
+            type: "jumpHeader",
+            hint: telemetry.hint + " Raw value: " + telemetry.rawValue,
+            headerKeys: [telemetry.key],
+            fallbackId: "spamSection"
+          }
+        );
+      }
+      ui.ironportSectionBlock.style.display = ironPortTelemetryList.length ? "block" : "none";
       ui.gatewaySectionBlock.style.display = gatewayCount || pp.hasSignals ? "block" : "none";
 
       const routeNodes = buildRouteStoryNodes(parsed.hops);
