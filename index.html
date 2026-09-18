@@ -799,7 +799,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.09.16.2130";
+    const APP_BUILD = "2026.09.18.0835";
     const PAGE_COUNTER_START = 500;
     const PAGE_COUNTER_KEY = "msgheaders-page-counter";
 
@@ -1309,6 +1309,7 @@ If Python is not installed on this machine:
           "x-proofpoint-original-guid",
           "x-proofpoint-banner-trigger",
           "x-proofpoint-banner",
+          "x-proofpoint-reinject",
           "x-proofpoint-spam-details",
           "x-proofpoint-spam-info",
           "x-proofpoint-spam-details-enc"
@@ -1316,7 +1317,7 @@ If Python is not installed on this machine:
         const telemetryKeys = Object.keys(headers || {})
           .filter(function (key) {
             const lowered = String(key || "").toLowerCase();
-            if (suppressedTelemetryKeys.has(lowered) || isHiddenProofpointHeader(key)) {
+            if (suppressedTelemetryKeys.has(lowered) || isHiddenProofpointHeader(key) || /^(x-proofpoint-.*reinject)$/i.test(lowered)) {
               return false;
             }
             return /^(x-(ironport|threatscanner|proofpoint|mimecast|barracuda))/i.test(lowered);
