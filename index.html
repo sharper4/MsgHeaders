@@ -804,7 +804,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.09.18.1335";
+    const APP_BUILD = "2026.09.18.1415";
     const PAGE_COUNTER_START = 500;
     const PAGE_COUNTER_KEY = "msgheaders-page-counter";
 
@@ -1540,7 +1540,7 @@ If Python is not installed on this machine:
       return details[String(key || "").toLowerCase()] || "Proofpoint spam detail value. Scores are vendor-specific and should be interpreted with the full context. Raw value: " + value + ".";
     }
 
-    function renderProofpointDetailPills(container, details) {
+    function getProofpointPillEntries(details) {
       const allowedKeys = [
         "score",
         "clscore",
@@ -1556,51 +1556,56 @@ If Python is not installed on this machine:
         "scancount"
       ];
 
-      for (const key of allowedKeys) {
-        if (!details || details[key] === undefined || details[key] === null || details[key] === "") {
-          continue;
-        }
-
-        const rawValue = String(details[key]).trim();
-        if (!rawValue) {
-          continue;
-        }
-
-        if (key === "adjust") {
-          const numericValue = Number.parseInt(rawValue, 10);
-          if (Number.isNaN(numericValue) || numericValue === 0) {
-            continue;
+      return allowedKeys
+        .filter(function (key) {
+          if (!details || details[key] === undefined || details[key] === null || details[key] === "") {
+            return false;
           }
-        }
-
-        if (key === "scancount") {
-          const numericValue = Number.parseInt(rawValue, 10);
-          if (Number.isNaN(numericValue) || numericValue <= 1) {
-            continue;
+          const rawValue = String(details[key]).trim();
+          if (!rawValue) {
+            return false;
           }
-        }
+          if (key === "adjust") {
+            return Number.parseInt(rawValue, 10) !== 0;
+          }
+          if (key === "scancount") {
+            return Number.parseInt(rawValue, 10) > 1;
+          }
+          return true;
+        })
+        .map(function (key) {
+          const rawValue = String(details[key]).trim();
+          const numericValue = Number.parseInt(rawValue, 10);
+          let tone = "muted";
+          if (key === "adjust") {
+            tone = numericValue !== 0 ? "warn" : "ok";
+          } else if (key === "scancount") {
+            tone = numericValue > 1 ? "warn" : "ok";
+          } else if (/clscore|lowpriorityscore|adultscore/.test(key)) {
+            tone = numericValue > 0 ? "muted" : "ok";
+          } else if (key === "priorityscore") {
+            tone = "ok";
+          } else {
+            tone = numericValue > 0 ? "warn" : "ok";
+          }
+          return {
+            key: key,
+            label: proofpointFieldLabel(key),
+            value: rawValue,
+            tone: tone
+          };
+        });
+    }
 
-        const label = proofpointFieldLabel(key);
-        let tone = "muted";
-        if (key === "adjust") {
-          tone = Number.parseInt(rawValue, 10) !== 0 ? "warn" : "ok";
-        } else if (key === "scancount") {
-          tone = Number.parseInt(rawValue, 10) > 1 ? "warn" : "ok";
-        } else if (/clscore|lowpriorityscore|adultscore/.test(key)) {
-          tone = Number.parseInt(rawValue, 10) > 0 ? "muted" : "ok";
-        } else if (key === "priorityscore") {
-          tone = "ok";
-        } else {
-          tone = /score|phish|spam|bulk|malware|impostor/.test(key) ? (Number.parseInt(rawValue, 10) > 0 ? "warn" : "ok") : "muted";
-        }
-
+    function renderProofpointDetailPills(container, details) {
+      for (const entry of getProofpointPillEntries(details)) {
         renderActionPill(
           container,
-          label + ": " + rawValue,
-          tone,
+          entry.label + ": " + entry.value,
+          entry.tone,
           {
             type: "jumpHeader",
-            hint: proofpointFieldHint(key, rawValue),
+            hint: proofpointFieldHint(entry.key, entry.value),
             headerKeys: ["x-proofpoint-spam-details"],
             fallbackId: "spamSection"
           }
@@ -2746,46 +2751,21 @@ If Python is not installed on this machine:
       }
       lines.push("");
       lines.push("Routing");
-      lines.push("Hops: " + parsed.hops.length);
-      lines.push("End-to-End: " + formatDuration(parsed.totalTransitMs));
-      const longestHop = getLongestHop(parsed.hops);
-      lines.push("Longest Hop: " + (longestHop ? ("#" + longestHop.hop + " (" + formatDuration(longestHop.delayMs) + ")") : "n/a"));
-      lines.push("SPF: " + parsed.auth.spf);
-      lines.push("DKIM: " + parsed.auth.dkim);
-      lines.push("DMARC: " + parsed.auth.dmarc);
-      lines.push("CompAuth: " + parsed.auth.compauth + (parsed.auth.compauthReason ? " (Reason " + parsed.auth.compauthReason + ")" : ""));
-      const ms = parsed.policySignals.forefront;
-      if (ms.scl) {
-        lines.push("SCL: " + ms.scl);
-      }
-      if (ms.bcl) {
-        lines.push("BCL: " + ms.bcl);
-      }
-      if (ms.pcl) {
-        lines.push("PCL: " + ms.pcl);
-      }
-      if (ms.sfv) {
-        lines.push("SFV: " + ms.sfv);
-      }
-      if (ms.cat) {
-        lines.push("CAT: " + ms.cat);
-      }
-      if (parsed.policySignals.gatewayPolicy) {
-        lines.push("MailFlowPolicy: " + parsed.policySignals.gatewayPolicy);
-      }
-      if (parsed.policySignals.primaryGatewayVendor) {
-        lines.push("Gateway Vendor: " + parsed.policySignals.primaryGatewayVendor);
-      }
-      const telemetryItems = (parsed.policySignals.gatewayTelemetry || []).map(function (entry) {
-        return entry.label;
-      });
-      if (telemetryItems.length) {
-        lines.push("Gateway Telemetry Headers: " + telemetryItems.join(", "));
-      }
-      if (parsed.policySignals.threatScannerVerdict) {
-        lines.push("ThreatScannerVerdict: " + parsed.policySignals.threatScannerVerdict);
-      }
+      lines.push(displayedPillsPlainText());
       lines.push("Route: " + buildRouteStory(parsed.hops).join(" -> "));
+      lines.push("");
+      lines.push("Received Hop Chain");
+      parsed.hops.forEach(function (hop) {
+        lines.push(
+          "Hop #" + hop.hop + ": " + routeStepForHop(hop) +
+          " | From: " + (hop.from || "n/a") +
+          " | By: " + (hop.by || "n/a") +
+          " | IP: " + (hop.ip || "n/a") +
+          " | Protocol: " + (hop.protocol || "n/a") +
+          " | Date: " + (hop.date || "n/a") +
+          " | Delay: " + formatDuration(hop.delayMs)
+        );
+      });
       return lines.join("\n");
     }
 
@@ -2820,6 +2800,45 @@ If Python is not installed on this machine:
         "</div>";
     }
 
+    function getDisplayedPillGroups() {
+      return [
+        { title: "Auth Results", container: ui.authPills },
+        { title: ui.gatewaySectionTitle.textContent || "Gateway Security Signals", container: ui.gatewayPills },
+        { title: "Microsoft Security Signals", container: ui.microsoftPills, section: ui.microsoftSectionBlock },
+        { title: "IronPort Security Signals", container: ui.ironportPills, section: ui.ironportSectionBlock },
+        { title: "Google Security Signals", container: ui.googlePills, section: ui.googleSectionBlock },
+        { title: "Routing", container: ui.routingPills }
+      ].map(function (group) {
+        const pills = Array.from(group.container.querySelectorAll(".pill")).map(function (pill) {
+          const tone = ["ok", "warn", "bad", "phish", "muted"].find(function (name) {
+            return pill.classList.contains(name);
+          }) || "muted";
+          return { text: pill.textContent.trim(), tone: tone };
+        });
+        return { title: group.title, pills: pills, visible: !group.section || group.section.style.display !== "none" };
+      }).filter(function (group) {
+        return group.visible && group.pills.length;
+      });
+    }
+
+    function displayedPillsPlainText() {
+      return getDisplayedPillGroups().map(function (group) {
+        return group.title + "\n" + group.pills.map(function (pill) {
+          return pill.text;
+        }).join("\n");
+      }).join("\n\n");
+    }
+
+    function displayedPillsHtml() {
+      return getDisplayedPillGroups().map(function (group) {
+        return "<div style=\"margin:8px 0 0;\"><div style=\"margin:0 0 6px;font-size:12px;font-weight:700;color:#486581;text-transform:uppercase;letter-spacing:0.4px;\">" +
+          escapeHtml(group.title) + "</div>" +
+          group.pills.map(function (pill) {
+            return exportPillHtml(pill.text, pill.tone);
+          }).join("") + "</div>";
+      }).join("");
+    }
+
     function formatHtmlResultsReport(parsed) {
       const detailRows = [
         ["From", parsed.envelope.from],
@@ -2832,71 +2851,7 @@ If Python is not installed on this machine:
         ["Reply-To", parsed.envelope.replyTo],
         ["X-Originating-IP", parsed.envelope.xOriginatingIp]
       ];
-      const ms = parsed.policySignals.forefront;
       const longestHop = getLongestHop(parsed.hops);
-      const authPills = [
-        exportPillHtml("Hops: " + parsed.hops.length, parsed.hops.length ? "ok" : "warn"),
-        exportPillHtml("End-to-End: " + formatDuration(parsed.totalTransitMs), typeof parsed.totalTransitMs === "number" ? "ok" : "warn"),
-        exportPillHtml(
-          "Longest Hop: " + (longestHop ? ("#" + longestHop.hop + " (" + formatDuration(longestHop.delayMs) + ")") : "n/a"),
-          longestHop ? (hopDelayTone(longestHop.delayMs) || "warn") : "muted"
-        ),
-        exportPillHtml("SPF: " + parsed.auth.spf, classifyResult(parsed.auth.spf)),
-        exportPillHtml("DKIM: " + parsed.auth.dkim, classifyResult(parsed.auth.dkim)),
-        exportPillHtml("DMARC: " + parsed.auth.dmarc, classifyResult(parsed.auth.dmarc)),
-        exportPillHtml("CompAuth: " + parsed.auth.compauth + (parsed.auth.compauthReason ? " (Reason " + parsed.auth.compauthReason + ")" : ""), classifyResult(parsed.auth.compauth)),
-        exportPillHtml("Routing Hops: " + parsed.hops.length, parsed.hops.length ? "ok" : "warn"),
-        exportPillHtml("End-to-End: " + formatDuration(parsed.totalTransitMs), typeof parsed.totalTransitMs === "number" ? "ok" : "warn")
-      ].join("");
-
-      const proofpoint = parsed.proofpoint || {};
-      const gatewayLabel = proofpoint.hasSignals ? "Proofpoint Security Signals" : "Receiving Gateway Signals";
-      const proofpointFieldPills = proofpoint.parsed ? Object.entries(proofpoint.parsed)
-        .filter(function ([key, value]) {
-          if (!value || !["score", "impostorscore", "malwarescore", "bulkscore", "clscore", "spamscore", "priorityscore", "phishscore", "lowpriorityscore", "adultscore", "adjust", "scancount"].includes(key)) {
-            return false;
-          }
-          if (key === "adjust") {
-            return Number.parseInt(value, 10) !== 0;
-          }
-          if (key === "scancount") {
-            return Number.parseInt(value, 10) > 1;
-          }
-          return Number.parseInt(value, 10) > 0;
-        })
-        .map(function ([key, value]) {
-          const numericValue = Number.parseInt(value, 10);
-          const tone = key === "adjust"
-            ? (numericValue !== 0 ? "warn" : "ok")
-            : key === "scancount"
-              ? (numericValue > 1 ? "warn" : "ok")
-              : (numericValue > 0 ? "warn" : "ok");
-          return exportPillHtml(proofpointFieldLabel(key) + ": " + value, tone);
-        }).join("") : "";
-      const microsoftPills = [
-        proofpointFieldPills,
-        ms.scl ? exportPillHtml("SCL: " + ms.scl, classifyScl(ms.scl)) : "",
-        ms.bcl ? exportPillHtml("BCL: " + ms.bcl, classifyBcl(ms.bcl)) : "",
-        ms.pcl ? exportPillHtml("PCL: " + ms.pcl, classifyPcl(ms.pcl)) : "",
-        ms.sfv ? exportPillHtml("SFV: " + ms.sfv, classifySfv(ms.sfv)) : "",
-        ms.cat ? exportPillHtml("CAT: " + ms.cat, classifyCat(ms.cat)) : ""
-      ].join("");
-
-      const gatewayPills = [
-        parsed.policySignals.gatewayPolicy ? exportPillHtml("MailFlowPolicy: " + parsed.policySignals.gatewayPolicy, classifyGatewayPolicy(parsed.policySignals.gatewayPolicy)) : "",
-        parsed.policySignals.threatScannerVerdict ? exportPillHtml("ThreatScannerVerdict: " + parsed.policySignals.threatScannerVerdict, classifyThreatScannerVerdict(parsed.policySignals.threatScannerVerdict)) : "",
-        exportPillHtml("GrayMail: " + (parsed.policySignals.grayMailDetected ? "Detected" : "Not Detected"), parsed.policySignals.grayMailDetected ? "warn" : "ok"),
-        parsed.policySignals.proxyWrappedUrlFound ? exportPillHtml("ProxyWrapped URL: Found", "warn") : ""
-      ].join("");
-      const ironPortPills = (parsed.policySignals.gatewayTelemetry || [])
-        .filter(function (entry) {
-          return /^x-ironport-/i.test(entry.key) &&
-            !["x-ironport-mailflowpolicy", "x-ironport-gray"].includes(entry.key);
-        })
-        .map(function (entry) {
-          return exportPillHtml(entry.label + ": " + entry.value, entry.tone || "muted");
-        })
-        .join("");
 
       const detailTable = "<table style=\"border-collapse:collapse;width:100%;max-width:900px;\">" +
         detailRows.map(function (row) {
@@ -2910,12 +2865,32 @@ If Python is not installed on this machine:
         }).join("") +
         "</ul>";
 
+      const receivedHopTable = "<table style=\"border-collapse:collapse;width:100%;font-size:12px;\">" +
+        "<thead><tr>" +
+        ["Hop", "Route Step", "From", "By", "IP", "Protocol", "Date", "Delay"].map(function (label) {
+          return "<th style=\"padding:5px;text-align:left;border-bottom:1px solid #d8e3ee;color:#486581;\">" + label + "</th>";
+        }).join("") +
+        "</tr></thead><tbody>" +
+        parsed.hops.map(function (hop) {
+          return "<tr>" + [
+            hop.hop,
+            routeStepForHop(hop),
+            hop.from,
+            hop.by,
+            hop.ip,
+            hop.protocol,
+            hop.date,
+            formatDuration(hop.delayMs)
+          ].map(function (value) {
+            return "<td style=\"padding:5px;border-bottom:1px solid #e7f0f8;vertical-align:top;\">" + escapeHtml(String(value || "n/a")) + "</td>";
+          }).join("") + "</tr>";
+        }).join("") +
+        "</tbody></table>";
+
       const routingHtml =
-        "<div style=\"margin:0 0 8px;\">" + authPills + "</div>" +
-        (microsoftPills ? "<div style=\"margin:8px 0 0;\"><div style=\"margin:0 0 6px;font-size:12px;font-weight:700;color:#486581;text-transform:uppercase;letter-spacing:0.4px;\">" + escapeHtml(gatewayLabel) + "</div>" + microsoftPills + "</div>" : "") +
-        (gatewayPills ? "<div style=\"margin:8px 0 0;\"><div style=\"margin:0 0 6px;font-size:12px;font-weight:700;color:#486581;text-transform:uppercase;letter-spacing:0.4px;\">" + escapeHtml(parsed.policySignals.primaryGatewayVendor ? ("Gateway Security Signals (" + parsed.policySignals.primaryGatewayVendor + ")") : "Gateway Security Signals") + "</div>" + gatewayPills + "</div>" : "") +
-        (ironPortPills ? "<div style=\"margin:8px 0 0;\"><div style=\"margin:0 0 6px;font-size:12px;font-weight:700;color:#486581;text-transform:uppercase;letter-spacing:0.4px;\">IronPort Signals</div>" + ironPortPills + "</div>" : "") +
-        "<div style=\"margin:12px 0 0;padding:10px 12px;border:1px solid #d8e3ee;border-radius:10px;background:#ffffff;color:#102a43;\"><strong>Route:</strong> " + escapeHtml(buildRouteStory(parsed.hops).join(" -> ")) + "</div>";
+        displayedPillsHtml() +
+        "<div style=\"margin:12px 0 8px;padding:10px 12px;border:1px solid #d8e3ee;border-radius:10px;background:#ffffff;color:#102a43;\"><strong>Route:</strong> " + escapeHtml(buildRouteStory(parsed.hops).join(" -> ")) + "</div>" +
+        "<h4 style=\"margin:12px 0 8px;color:#12344d;\">Received Hop Chain</h4>" + receivedHopTable;
 
       return "<div style=\"font-family:Segoe UI,Aptos,Tahoma,sans-serif;color:#102a43;line-height:1.45;background:#eef4f8;padding:18px;border-radius:16px;\">" +
         "<h2 style=\"margin:0 0 14px;color:#12344d;font-size:22px;\">Email Header Analyzer Results</h2>" +
