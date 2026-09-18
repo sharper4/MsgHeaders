@@ -799,7 +799,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.09.18.0835";
+    const APP_BUILD = "2026.09.18.1305";
     const PAGE_COUNTER_START = 500;
     const PAGE_COUNTER_KEY = "msgheaders-page-counter";
 
@@ -2524,12 +2524,32 @@ If Python is not installed on this machine:
       return item;
     }
 
+    function copyWithLegacyClipboard(text) {
+      const textarea = document.createElement("textarea");
+      textarea.value = text || "";
+      textarea.setAttribute("readonly", "");
+      textarea.style.position = "fixed";
+      textarea.style.left = "-9999px";
+      textarea.style.top = "0";
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+
+      let copied = false;
+      try {
+        copied = document.execCommand("copy");
+      } finally {
+        document.body.removeChild(textarea);
+      }
+      return copied;
+    }
+
     async function copyToClipboard(text) {
       try {
         await navigator.clipboard.writeText(text || "");
         return true;
       } catch (error) {
-        return false;
+        return copyWithLegacyClipboard(text);
       }
     }
 
@@ -2880,7 +2900,6 @@ If Python is not installed on this machine:
         "<div style=\"margin:0 0 8px;\">" + authPills + "</div>" +
         (microsoftPills ? "<div style=\"margin:8px 0 0;\"><div style=\"margin:0 0 6px;font-size:12px;font-weight:700;color:#486581;text-transform:uppercase;letter-spacing:0.4px;\">" + escapeHtml(gatewayLabel) + "</div>" + microsoftPills + "</div>" : "") +
         (gatewayPills ? "<div style=\"margin:8px 0 0;\"><div style=\"margin:0 0 6px;font-size:12px;font-weight:700;color:#486581;text-transform:uppercase;letter-spacing:0.4px;\">" + escapeHtml(parsed.policySignals.primaryGatewayVendor ? ("Gateway Security Signals (" + parsed.policySignals.primaryGatewayVendor + ")") : "Gateway Security Signals") + "</div>" + gatewayPills + "</div>" : "") +
-        (ironPortPills ? "<div style=\"margin:8px 0 0;\"><div style=\"margin:0 0 6px;font-size:12px;font-weight:700;color:#486581;text-transform:uppercase;letter-spacing:0.4px;\">IronPort Signals</div>" + ironPortPills + "</div>" : "") +
         "<div style=\"margin:12px 0 0;padding:10px 12px;border:1px solid #d8e3ee;border-radius:10px;background:#ffffff;color:#102a43;\"><strong>Route:</strong> " + escapeHtml(buildRouteStory(parsed.hops).join(" -> ")) + "</div>";
 
       return "<div style=\"font-family:Segoe UI,Aptos,Tahoma,sans-serif;color:#102a43;line-height:1.45;background:#eef4f8;padding:18px;border-radius:16px;\">" +
