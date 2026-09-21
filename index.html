@@ -804,7 +804,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.09.18.1450";
+    const APP_BUILD = "2026.09.21.1700";
     const PAGE_COUNTER_START = 500;
     const PAGE_COUNTER_KEY = "msgheaders-page-counter";
     let analyzedCount = PAGE_COUNTER_START;
@@ -1320,7 +1320,9 @@ If Python is not installed on this machine:
           "x-proofpoint-reinject",
           "x-proofpoint-spam-details",
           "x-proofpoint-spam-info",
-          "x-proofpoint-spam-details-enc"
+          "x-proofpoint-spam-details-enc",
+          "x-proofpoint-spam-reason",
+          "x-proofpoint-virus-version"
         ]);
         const telemetryKeys = Object.keys(headers || {})
           .filter(function (key) {
@@ -1458,9 +1460,13 @@ If Python is not installed on this machine:
       const spamDetailsRaw = firstHeaderValue(headers, "x-proofpoint-spam-details");
       const spamInfoRaw = firstHeaderValue(headers, "x-proofpoint-spam-info");
       const spamDetailsEncRaw = firstHeaderValue(headers, "x-proofpoint-spam-details-enc");
+      const spamReasonRaw = firstHeaderValue(headers, "x-proofpoint-spam-reason");
       const spamFields = parseProofpointKeyValuePairs(spamDetailsRaw);
       const infoFields = parseProofpointKeyValuePairs(spamInfoRaw);
       const combinedFields = Object.assign({}, infoFields, spamFields);
+      if (!combinedFields.orgsafe && /\borgsafe\b/i.test(String(spamReasonRaw || ""))) {
+        combinedFields.orgsafe = String(spamReasonRaw).trim();
+      }
       const directionValue = spamFields.route || spamFields.policy || infoFields.route || infoFields.policy || "";
       const combinedGuid = guid || originalGuid || "";
       const summary = Object.entries(spamFields)
@@ -1479,6 +1485,7 @@ If Python is not installed on this machine:
         spamDetails: spamDetailsRaw || "",
         spamInfo: spamInfoRaw || "",
         spamDetailsEnc: spamDetailsEncRaw || "",
+        spamReason: spamReasonRaw || "",
         parsed: combinedFields,
         parsedInfo: infoFields,
         summary: summary
