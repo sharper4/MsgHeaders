@@ -797,7 +797,7 @@ If Python is not installed on this machine:
     </section>
     <button id="scrollTopBtn" class="floating-action is-hidden" type="button">Go To Top</button>
     <div class="status-badge-stack">
-      <div id="pageCounterBadge" class="counter-badge" aria-label="Page usage counter">Views 500</div>
+      <div id="pageCounterBadge" class="counter-badge" aria-label="Headers analyzed counter">Headers Analyzed: 500</div>
       <div id="buildBadge" class="build-badge" aria-label="Build version">Build</div>
     </div>
     <a id="authorBadge" class="author-badge" href="https://www.linkedin.com/in/scottharper4" target="_blank" rel="noopener noreferrer" aria-label="Written by Scott Harper">Written by Scott Harper</a>
@@ -807,6 +807,7 @@ If Python is not installed on this machine:
     const APP_BUILD = "2026.09.18.1450";
     const PAGE_COUNTER_START = 500;
     const PAGE_COUNTER_KEY = "msgheaders-page-counter";
+    let analyzedCount = PAGE_COUNTER_START;
 
     const ui = {
       input: document.getElementById("headerInput"),
@@ -846,11 +847,10 @@ If Python is not installed on this machine:
 
     try {
       const savedPageCount = Number.parseInt(localStorage.getItem(PAGE_COUNTER_KEY) || "", 10);
-      const pageCount = Number.isFinite(savedPageCount) && savedPageCount >= PAGE_COUNTER_START ? savedPageCount : PAGE_COUNTER_START;
-      localStorage.setItem(PAGE_COUNTER_KEY, String(pageCount + 1));
-      ui.pageCounterBadge.textContent = "Views " + pageCount;
+      analyzedCount = Number.isFinite(savedPageCount) && savedPageCount >= PAGE_COUNTER_START ? savedPageCount : PAGE_COUNTER_START;
+      ui.pageCounterBadge.textContent = "Headers Analyzed: " + analyzedCount;
     } catch (error) {
-      ui.pageCounterBadge.textContent = "Views " + PAGE_COUNTER_START;
+      ui.pageCounterBadge.textContent = "Headers Analyzed: " + analyzedCount;
     }
 
     ui.buildBadge.textContent = "Build " + APP_BUILD;
@@ -1506,6 +1506,7 @@ If Python is not installed on this machine:
 
     function proofpointFieldLabel(key) {
       const labelMap = {
+        orgsafe: "OrgSafe",
         score: "Score",
         impostorscore: "Impostor Score",
         malwarescore: "Malware Score",
@@ -1524,6 +1525,7 @@ If Python is not installed on this machine:
 
     function proofpointFieldHint(key, value) {
       const details = {
+        orgsafe: "Proofpoint OrgSafe indicates that the sender or domain was specifically allowlisted by the organization. Raw value: " + value + ".",
         score: "Overall Proofpoint score for the message. Higher numbers reflect stronger spam risk, but use it alongside the more specific sub-scores.",
         impostorscore: "Impostor score reflects similarity to a spoofing or impersonation pattern. Higher values suggest stronger impersonation concerns.",
         malwarescore: "Malware score indicates the gateway's malware weighting. It is a support signal, not a definitive malware verdict by itself.",
@@ -1542,6 +1544,7 @@ If Python is not installed on this machine:
 
     function getProofpointPillEntries(details) {
       const allowedKeys = [
+        "orgsafe",
         "score",
         "clscore",
         "impostorscore",
@@ -1577,7 +1580,9 @@ If Python is not installed on this machine:
           const rawValue = String(details[key]).trim();
           const numericValue = Number.parseInt(rawValue, 10);
           let tone = "muted";
-          if (key === "adjust") {
+          if (key === "orgsafe") {
+            tone = "ok";
+          } else if (key === "adjust") {
             tone = numericValue !== 0 ? "warn" : "ok";
           } else if (key === "scancount") {
             tone = numericValue > 1 ? "warn" : "ok";
@@ -2029,10 +2034,15 @@ If Python is not installed on this machine:
       return (meanings[field] && meanings[field][normalized]) || (field + " is a Microsoft diagnostic value; raw value: " + value + ".");
     }
 
-    function evaluateFindings(auth, envelope, hops, policySignals, mailOrigin, headers) {
+    function evaluateFindings(auth, envelope, hops, policySignals, mailOrigin, headers, proofpoint) {
       const notes = [];
       let hasNonPassAuth = false;
       const alignment = getAlignmentSignals(auth, envelope, headers);
+
+      if (proofpoint && proofpoint.parsed && proofpoint.parsed.orgsafe) {
+        const fromDomain = getDomain(envelope.from);
+        notes.push("Proofpoint OrgSafe whitelist detected: " + (fromDomain || "the sender domain") + " was specifically whitelisted in Proofpoint as a result of this finding.");
+      }
 
       const authChecks = [
         ["SPF", "spf", auth.spf],
@@ -3579,7 +3589,7 @@ If Python is not installed on this machine:
         : null;
       const policySignals = extractPolicySignals(headers);
       const proofpoint = parseProofpointSignals(headers);
-      const findings = evaluateFindings(auth, envelope, hops, policySignals, mailOrigin, headers);
+      const findings = evaluateFindings(auth, envelope, hops, policySignals, mailOrigin, headers, proofpoint);
       const partial = { headers, auth, hops, envelope, findings, groupedHeaders, totalTransitMs, policySignals, proofpoint };
       const narrativeSummary = buildNarrativeSummary(partial);
       return { headers, auth, hops, envelope, findings, groupedHeaders, totalTransitMs, policySignals, proofpoint, narrativeSummary };
@@ -3593,6 +3603,13 @@ If Python is not installed on this machine:
       }
 
       const parsed = parseHeaders(raw);
+      analyzedCount += 1;
+      try {
+        localStorage.setItem(PAGE_COUNTER_KEY, String(analyzedCount));
+      } catch (error) {
+        // Keep the session count visible when browser storage is unavailable.
+      }
+      ui.pageCounterBadge.textContent = "Headers Analyzed: " + analyzedCount;
       currentParsed = parsed;
       renderSummary(parsed);
       ui.resultsShell.classList.remove("is-hidden");
