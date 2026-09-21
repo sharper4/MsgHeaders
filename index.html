@@ -1460,6 +1460,7 @@ If Python is not installed on this machine:
       const spamDetailsEncRaw = firstHeaderValue(headers, "x-proofpoint-spam-details-enc");
       const spamFields = parseProofpointKeyValuePairs(spamDetailsRaw);
       const infoFields = parseProofpointKeyValuePairs(spamInfoRaw);
+      const combinedFields = Object.assign({}, infoFields, spamFields);
       const directionValue = spamFields.route || spamFields.policy || infoFields.route || infoFields.policy || "";
       const combinedGuid = guid || originalGuid || "";
       const summary = Object.entries(spamFields)
@@ -1478,7 +1479,7 @@ If Python is not installed on this machine:
         spamDetails: spamDetailsRaw || "",
         spamInfo: spamInfoRaw || "",
         spamDetailsEnc: spamDetailsEncRaw || "",
-        parsed: spamFields,
+        parsed: combinedFields,
         parsedInfo: infoFields,
         summary: summary
       };
