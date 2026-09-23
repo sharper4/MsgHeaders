@@ -804,7 +804,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.09.21.1700";
+    const APP_BUILD = "2026.09.23.0924";
     const PAGE_COUNTER_START = 500;
     const PAGE_COUNTER_KEY = "msgheaders-page-counter";
     let analyzedCount = PAGE_COUNTER_START;
@@ -1514,18 +1514,15 @@ If Python is not installed on this machine:
 
     function proofpointFieldLabel(key) {
       const labelMap = {
-        orgsafe: "OrgSafe",
         score: "Score",
-        impostorscore: "Impostor Score",
-        malwarescore: "Malware Score",
-        bulkscore: "Bulk Score",
-        clscore: "CL Score (classifier)",
-        spamscore: "Spam Score",
-        priorityscore: "Priority Score (internal)",
-        phishscore: "Phish Score",
-        lowpriorityscore: "Low Priority Score (internal)",
-        adultscore: "Adult Score",
-        adjust: "Adjust",
+        spamscore: "Spam",
+        malwarescore: "Malware",
+        lowpriorityscore: "Low Priority",
+        impostorscore: "Imposter",
+        suspectscore: "Suspect",
+        bulkscore: "Bulk",
+        adultscore: "Adult",
+        phishscore: "Phish",
         scancount: "Scan Count"
       };
       return labelMap[String(key || "").toLowerCase()] || String(key || "").replace(/_/g, " ").replace(/\b([a-z])/g, function (match) { return match.toUpperCase(); });
@@ -1545,25 +1542,22 @@ If Python is not installed on this machine:
         lowpriorityscore: "Low-priority score is a supporting Proofpoint signal used to distinguish lower-priority but still notable messages from clear spam or phishing traffic.",
         adultscore: "Adult-content score reflects the gateway's adult/explicit-content weighting. It is a supporting signal, not a trust or malware verdict by itself.",
         adjust: "Adjust is an internal Proofpoint weighting adjustment applied during policy evaluation. It is only meaningful when non-zero, and often serves as a supporting signal rather than a primary verdict.",
-        scancount: "Scan count indicates how many gateway scanning passes or engines evaluated the message. It matters only when it is greater than 1, since a single scan is routine and not highly informative."
+        scancount: "Scan count indicates how many gateway scanning passes or engines evaluated the message. It is shown only at 3 or higher because lower counts are routine and not highly informative."
       };
       return details[String(key || "").toLowerCase()] || "Proofpoint spam detail value. Scores are vendor-specific and should be interpreted with the full context. Raw value: " + value + ".";
     }
 
     function getProofpointPillEntries(details) {
       const allowedKeys = [
-        "orgsafe",
         "score",
-        "clscore",
-        "impostorscore",
-        "malwarescore",
-        "bulkscore",
         "spamscore",
-        "phishscore",
+        "malwarescore",
         "lowpriorityscore",
+        "impostorscore",
+        "suspectscore",
+        "bulkscore",
         "adultscore",
-        "priorityscore",
-        "adjust",
+        "phishscore",
         "scancount"
       ];
 
@@ -1576,11 +1570,8 @@ If Python is not installed on this machine:
           if (!rawValue) {
             return false;
           }
-          if (key === "adjust") {
-            return Number.parseInt(rawValue, 10) !== 0;
-          }
           if (key === "scancount") {
-            return Number.parseInt(rawValue, 10) > 1;
+            return Number.parseInt(rawValue, 10) >= 3;
           }
           return true;
         })
@@ -1588,16 +1579,10 @@ If Python is not installed on this machine:
           const rawValue = String(details[key]).trim();
           const numericValue = Number.parseInt(rawValue, 10);
           let tone = "muted";
-          if (key === "orgsafe") {
-            tone = "ok";
-          } else if (key === "adjust") {
-            tone = numericValue !== 0 ? "warn" : "ok";
-          } else if (key === "scancount") {
-            tone = numericValue > 1 ? "warn" : "ok";
-          } else if (/clscore|lowpriorityscore|adultscore/.test(key)) {
+          if (key === "scancount") {
+            tone = numericValue >= 3 ? "warn" : "ok";
+          } else if (/lowpriorityscore|adultscore/.test(key)) {
             tone = numericValue > 0 ? "muted" : "ok";
-          } else if (key === "priorityscore") {
-            tone = "ok";
           } else {
             tone = numericValue > 0 ? "warn" : "ok";
           }
