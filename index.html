@@ -804,8 +804,8 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.09.23.0924";
-    const PAGE_COUNTER_START = 500;
+    const APP_BUILD = "2026.09.25.0001";
+    const PAGE_COUNTER_START = 1000;
     const PAGE_COUNTER_KEY = "msgheaders-page-counter";
     let analyzedCount = PAGE_COUNTER_START;
 
@@ -847,7 +847,7 @@ If Python is not installed on this machine:
 
     try {
       const savedPageCount = Number.parseInt(localStorage.getItem(PAGE_COUNTER_KEY) || "", 10);
-      analyzedCount = Number.isFinite(savedPageCount) && savedPageCount >= PAGE_COUNTER_START ? savedPageCount : PAGE_COUNTER_START;
+      analyzedCount = Number.isFinite(savedPageCount) ? Math.max(savedPageCount, PAGE_COUNTER_START) : PAGE_COUNTER_START;
       ui.pageCounterBadge.textContent = "Headers Analyzed: " + analyzedCount;
     } catch (error) {
       ui.pageCounterBadge.textContent = "Headers Analyzed: " + analyzedCount;
