@@ -78,18 +78,26 @@ If Python is not installed on this machine:
 
     html,
     body {
+      lines.push("Potential Findings");
+      for (const finding of parsed.findings) {
+        lines.push("- " + finding);
+      }
+      lines.push("");
       margin: 0;
       padding: 0;
       font-family: "Segoe UI", "Aptos", Tahoma, sans-serif;
-      scroll-behavior: smooth;
-      color: var(--ink);
-      background:
-        radial-gradient(circle at 10% -10%, #17466d 0%, transparent 40%),
-        radial-gradient(circle at 98% 3%, #0f3657 0%, transparent 35%),
-        var(--bg);
-      min-height: 100%;
     }
-
+      lines.push("Security Signals");
+      lines.push(displayedPillsPlainText(getDisplayedPillGroups().filter(function (group) {
+        return group.title !== "Sender Authentication" && group.title !== "Final Hop Authentication" && group.title !== "Routing";
+      })));
+      lines.push("");
+      lines.push("Routing Summary");
+      lines.push(displayedPillsPlainText(getDisplayedPillGroups().filter(function (group) { return group.title === "Routing"; })));
+      lines.push("Route: " + buildRouteStory(parsed.hops).join(" -> "));
+      lines.push("");
+      lines.push("Detailed Analysis");
+      lines.push("Authentication Timeline");
     .page {
       width: min(1880px, calc(100vw - 24px));
       margin: 24px auto 28px;
@@ -239,8 +247,8 @@ If Python is not installed on this machine:
     }
 
     .auth-summary {
-      margin: 10px 0 16px;
-      padding: 16px;
+      margin: 10px 0 0;
+      padding: 12px 14px;
       border: 1px solid rgba(184, 210, 232, 0.32);
       border-left: 4px solid #4fd1a1;
       border-radius: 8px;
@@ -249,9 +257,9 @@ If Python is not installed on this machine:
     }
 
     .auth-summary h3 {
-      margin: 0 0 12px;
+      margin: 0 0 8px;
       color: #f1f7fa;
-      font-size: 1.12rem;
+      font-size: 1rem;
     }
 
     .auth-lane-label {
@@ -263,7 +271,7 @@ If Python is not installed on this machine:
 
     .auth-summary .status-row {
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      margin-bottom: 4px;
+      margin-bottom: 2px;
     }
 
     .auth-summary .pill {
@@ -272,19 +280,34 @@ If Python is not installed on this machine:
       font-size: 0.84rem;
     }
 
-    .auth-verdict {
-      display: grid;
-      gap: 5px;
-      margin: 12px 0 0;
+    .analysis-disclosure {
+      border-top: 1px solid rgba(184, 210, 232, 0.2);
       padding-top: 10px;
-      border-top: 1px solid rgba(184, 210, 232, 0.24);
-      color: #eef6f8;
-      font-size: 0.9rem;
-      line-height: 1.45;
     }
 
-    .auth-verdict p {
-      margin: 0;
+    .analysis-disclosure > summary,
+    .hop-disclosure > summary {
+      cursor: pointer;
+      color: #e6f2ff;
+      font-weight: 700;
+      padding: 6px 0;
+    }
+
+    .analysis-disclosure[open] > summary,
+    .hop-disclosure[open] > summary {
+      margin-bottom: 10px;
+    }
+
+    .detailed-analysis-content {
+      display: grid;
+      gap: 14px;
+    }
+
+    .detailed-analysis-content h3,
+    .detailed-analysis-content h4 {
+      margin: 0 0 7px;
+      color: #d7ebff;
+      font-size: 0.92rem;
     }
 
     .auth-analysis {
@@ -313,14 +336,14 @@ If Python is not installed on this machine:
 
     .auth-timeline-list {
       display: grid;
-      gap: 16px;
+      gap: 10px;
       list-style: none;
       padding: 0;
     }
 
     .auth-timeline-node {
       position: relative;
-      padding: 10px 12px;
+      padding: 8px 10px;
       border: 1px solid rgba(184, 210, 232, 0.24);
       border-radius: 6px;
       background: rgba(10, 24, 36, 0.38);
@@ -330,14 +353,14 @@ If Python is not installed on this machine:
       content: "↓";
       position: absolute;
       left: 50%;
-      bottom: -19px;
+      bottom: -15px;
       color: #8eb6cb;
       font-size: 1rem;
       line-height: 1;
     }
 
     .auth-timeline-title {
-      margin-bottom: 7px;
+      margin-bottom: 5px;
       color: #f1f7fa;
       font-weight: 700;
     }
@@ -858,26 +881,15 @@ If Python is not installed on this machine:
         <h3 class="heading-line">Key Header Values</h3>
         <dl id="headerDetails" class="kv-grid"></dl>
 
+        <h3 class="heading-line with-action"><span>Potential Findings</span><button id="copyFindingsBtn" class="section-toggle" type="button">Copy Findings</button></h3>
+        <ul id="findings" class="flags"></ul>
+
         <section id="authSummary" class="auth-summary" aria-label="Authentication Summary">
           <h3>Authentication Summary</h3>
           <div class="auth-lane-label">Sender Authentication</div>
           <div id="authPills" class="status-row"></div>
           <div class="auth-lane-label">Final Hop Authentication</div>
           <div id="finalAuthPills" class="status-row"></div>
-          <h4 class="auth-lane-label">Authentication Verdict</h4>
-          <div id="authVerdict" class="auth-verdict"></div>
-        </section>
-
-        <h3 class="heading-line with-action"><span>Potential Findings</span><button id="copyFindingsBtn" class="section-toggle" type="button">Copy Findings</button></h3>
-        <ul id="findings" class="flags"></ul>
-
-        <section id="authAnalysis" class="auth-analysis" aria-label="Authentication evidence">
-          <h4>Authentication Timeline</h4>
-          <ul id="authTimeline" class="auth-timeline-list"></ul>
-          <h4>Transit Analysis</h4>
-          <ul id="authTransit" class="auth-timeline-list"></ul>
-          <h4>Root Cause Analysis</h4>
-          <ul id="authRootCause" class="auth-root-cause-list"></ul>
         </section>
       </article>
 
@@ -916,39 +928,55 @@ If Python is not installed on this machine:
       </article>
 
       <article class="card">
-        <h2 id="routingSection" class="heading-line">Routing Details</h2>
-
-        <h3 class="heading-line">Routing</h3>
+        <h2 id="routingSection" class="heading-line">Routing Summary</h2>
         <div id="routingPills" class="status-row"></div>
-
-        <h3 class="heading-line with-action"><span>Received Hop Chain</span><button id="toggleHopChain" class="section-toggle" type="button">Show More</button></h3>
         <div id="routeInline" class="route-inline"></div>
-        <div id="hopTableWrap" class="table-wrap">
-          <table aria-label="Received hop details">
-            <colgroup>
-              <col class="hop-col-hop" />
-              <col class="hop-col-protocol" />
-              <col class="hop-col-from" />
-              <col class="hop-col-by" />
-              <col class="hop-col-ip" />
-              <col class="hop-col-date" />
-              <col class="hop-col-delay" />
-            </colgroup>
-            <thead>
-              <tr>
-                <th scope="col" title="Hop number in the order listed by headers">Hop</th>
-                <th scope="col" title="Generic path step derived from this hop">Route Step</th>
-                <th scope="col" title="Server that handed off the message">From</th>
-                <th scope="col" title="Server that received the message">By</th>
-                <th scope="col" title="Observed IPv4 address for this hop">IP</th>
-                <th scope="col" title="Transport protocol reported for this hop">Protocol</th>
-                <th scope="col" title="Timestamp recorded by this receiving server">Date</th>
-                <th scope="col" title="Time elapsed between this hop and the previous hop">Delay</th>
-              </tr>
-            </thead>
-            <tbody id="hopTable"></tbody>
-          </table>
-        </div>
+      </article>
+
+      <article class="card">
+        <details id="detailedAnalysis" class="analysis-disclosure">
+          <summary>Detailed Analysis</summary>
+          <div class="detailed-analysis-content">
+            <section id="authAnalysis" aria-label="Authentication evidence">
+              <h3>Authentication Timeline</h3>
+              <ul id="authTimeline" class="auth-timeline-list"></ul>
+              <h3>Transit Analysis</h3>
+              <ul id="authTransit" class="auth-timeline-list"></ul>
+              <h3>Root Cause</h3>
+              <ul id="authRootCause" class="auth-root-cause-list"></ul>
+            </section>
+            <details id="hopDetails" class="hop-disclosure">
+              <summary>Full Hop Chain</summary>
+              <h3 class="heading-line with-action"><span>Received Hop Chain</span><button id="toggleHopChain" class="section-toggle" type="button">Show More</button></h3>
+              <div id="hopTableWrap" class="table-wrap">
+                <table aria-label="Received hop details">
+                  <colgroup>
+                    <col class="hop-col-hop" />
+                    <col class="hop-col-protocol" />
+                    <col class="hop-col-from" />
+                    <col class="hop-col-by" />
+                    <col class="hop-col-ip" />
+                    <col class="hop-col-date" />
+                    <col class="hop-col-delay" />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th scope="col" title="Hop number in the order listed by headers">Hop</th>
+                      <th scope="col" title="Generic path step derived from this hop">Route Step</th>
+                      <th scope="col" title="Server that handed off the message">From</th>
+                      <th scope="col" title="Server that received the message">By</th>
+                      <th scope="col" title="Observed IPv4 address for this hop">IP</th>
+                      <th scope="col" title="Transport protocol reported for this hop">Protocol</th>
+                      <th scope="col" title="Timestamp recorded by this receiving server">Date</th>
+                      <th scope="col" title="Time elapsed between this hop and the previous hop">Delay</th>
+                    </tr>
+                  </thead>
+                  <tbody id="hopTable"></tbody>
+                </table>
+              </div>
+            </details>
+          </div>
+        </details>
       </article>
 
       <article class="card">
@@ -971,7 +999,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.10.05.0002";
+    const APP_BUILD = "2026.10.05.0003";
     const PAGE_COUNTER_START = 1000;
     const PAGE_COUNTER_KEY = "msgheaders-page-counter";
     let analyzedCount = PAGE_COUNTER_START;
@@ -988,7 +1016,6 @@ If Python is not installed on this machine:
       routingPills: document.getElementById("routingPills"),
       authPills: document.getElementById("authPills"),
       finalAuthPills: document.getElementById("finalAuthPills"),
-      authVerdict: document.getElementById("authVerdict"),
       authTimeline: document.getElementById("authTimeline"),
       authTransit: document.getElementById("authTransit"),
       authRootCause: document.getElementById("authRootCause"),
@@ -1009,6 +1036,8 @@ If Python is not installed on this machine:
       hopTableWrap: document.getElementById("hopTableWrap"),
       toggleHopChain: document.getElementById("toggleHopChain"),
       routeInline: document.getElementById("routeInline"),
+      detailedAnalysis: document.getElementById("detailedAnalysis"),
+      hopDetails: document.getElementById("hopDetails"),
       gatewaySectionBlock: document.getElementById("gatewaySectionBlock"),
       microsoftSectionBlock: document.getElementById("microsoftSectionBlock"),
       ironportSectionBlock: document.getElementById("ironportSectionBlock"),
@@ -2237,6 +2266,36 @@ If Python is not installed on this machine:
 
     function evaluateFindings(auth, envelope, hops, policySignals, mailOrigin, headers, proofpoint) {
       const notes = [];
+      const transit = auth.transit || {};
+      const finalVerdict = auth.finalHopVerdict || {};
+
+      if (transit.originalPassesAll) {
+        notes.push("Sender authentication passed at the original receiving gateway.");
+      } else if (transit.hasOriginal) {
+        const originalFailures = [["SPF", auth.spf], ["DKIM", auth.dkim], ["DMARC", auth.dmarc]]
+          .filter(function (entry) { return entry[1] !== "pass"; });
+        if (originalFailures.length) {
+          notes.push("Original-gateway authentication did not fully pass: " + originalFailures.map(function (entry) {
+            return entry[0] + " " + String(entry[1]).toUpperCase();
+          }).join(", ") + ".");
+        }
+      } else if ([auth.spf, auth.dkim, auth.dmarc].some(function (value) { return value !== "pass" && value !== "unknown"; })) {
+        notes.push("Authentication failures appear in the available final-hop results; no original-gateway evaluation was found.");
+      }
+      if (transit.degraded) {
+        notes.push("Authentication degraded later during mail transit.");
+        if (auth.spf === "pass" && finalVerdict.spf === "softfail") {
+          notes.push("SPF later failed because the message was relayed through another mail system.");
+        }
+        if (auth.dkim === "pass" && finalVerdict.dkim === "fail" && transit.dkimBodyHashFailed) {
+          notes.push("DKIM later failed because the message body was modified after signing.");
+        } else if (auth.dkim === "pass" && finalVerdict.dkim === "fail") {
+          notes.push("DKIM later failed during downstream validation.");
+        }
+        if (auth.dmarc === "pass" && finalVerdict.dmarc === "fail" && finalVerdict.spf !== "pass" && finalVerdict.dkim !== "pass") {
+          notes.push("DMARC consequently failed during downstream evaluation.");
+        }
+      }
 
       if (proofpoint && proofpoint.parsed && proofpoint.parsed.orgsafe) {
         const fromDomain = getDomain(envelope.from);
@@ -2270,33 +2329,30 @@ If Python is not installed on this machine:
 
       if (forefront.hasForefront && (sfv || cat)) {
         const verdict = microsoftVerdictText(forefront).replace(/^Microsoft (?:Verdict|Filtering):\s*/, "");
-        notes.push("Microsoft filtering classified this message as " + verdict + ". Evidence: " +
-          (sfv ? "SFV " + sfv + ". " : "") +
-          (cat && cat !== "NONE" ? "Threat category " + cat + ". " : "") +
-          (forefront.scl ? "SCL " + forefront.scl + " is supporting context, not the primary verdict." : ""));
+        notes.push("Microsoft classified the message as " + verdict + ".");
       } else if (!forefront.hasForefront && policySignals && policySignals.upstreamScl) {
-        notes.push("Microsoft filtering was not available. An Exchange SCL value was found, but no recipient-side Microsoft antispam report was present, so SCL " + policySignals.upstreamScl + " was treated as upstream metadata and excluded from the verdict.");
+        notes.push("Exchange SCL " + policySignals.upstreamScl + " is upstream metadata; no final-hop Microsoft filtering report was found.");
       }
 
       if (!Number.isNaN(scl) && scl >= 5) {
-        notes.push("Spam signal detected: SCL " + scl + " indicates the message was scored as spam or high-confidence spam.");
+        notes.push("Microsoft SCL " + scl + " indicates a spam or high-confidence spam score.");
       }
 
       if (!Number.isNaN(bcl) && bcl >= 4) {
-        notes.push("Bulk signal detected: BCL " + bcl + " indicates bulk/gray-mail characteristics.");
+        notes.push("Microsoft BCL " + bcl + " indicates bulk-mail characteristics.");
       }
 
       const pcl = parseInt(forefront.pcl, 10);
       if (!Number.isNaN(pcl) && pcl >= 3) {
-        notes.push("Phish signal detected: PCL " + pcl + " indicates increased phishing confidence.");
+        notes.push("Microsoft PCL " + pcl + " indicates increased phishing confidence.");
       }
 
       if (sfv && sfv !== "NSPM") {
-        notes.push("Spam verdict detected in SFV: " + sfv + " - " + sfvMeaning(sfv));
+        notes.push("Microsoft filtering result: " + sfv + " - " + sfvMeaning(sfv));
       }
 
       if (cat && cat !== "NONE") {
-        notes.push("Threat category detected in CAT: " + cat + " - " + catMeaning(cat));
+        notes.push("Microsoft threat category: " + cat + " - " + catMeaning(cat));
       }
 
       const gatewayPolicy = (policySignals && policySignals.gatewayPolicy ? policySignals.gatewayPolicy : "").trim();
@@ -2304,16 +2360,16 @@ If Python is not installed on this machine:
       const grayMailDetected = Boolean(policySignals && policySignals.grayMailDetected);
       const proxyWrappedUrlFound = Boolean(policySignals && policySignals.proxyWrappedUrlFound);
       if (gatewayPolicy && classifyGatewayPolicy(gatewayPolicy) !== "ok") {
-        notes.push("MailFlowPolicy result: " + gatewayPolicy + " - policy outcome needs review.");
+        notes.push("Mail-flow policy needs review: " + gatewayPolicy + ".");
       }
       if (threatVerdict && classifyThreatScannerVerdict(threatVerdict) !== "ok") {
-        notes.push("ThreatScannerVerdict result: " + threatVerdict + " - scanner did not return a clean/negative verdict.");
+        notes.push("Threat scanner returned a non-clean verdict: " + threatVerdict + ".");
       }
       if (grayMailDetected) {
-        notes.push("Gateway GrayMail indicator detected - message may be bulk/marketing style mail.");
+        notes.push("Gateway marked this as graymail or bulk-style mail.");
       }
       if (proxyWrappedUrlFound) {
-        notes.push("ProxyWrapped URL indicator detected - links appear to have been rewritten by security controls.");
+        notes.push("Links were rewritten by a security gateway.");
       }
 
       const slowHops = hops.filter(function (hop) {
@@ -2323,7 +2379,7 @@ If Python is not installed on this machine:
         const slowest = slowHops.reduce(function (maxHop, currentHop) {
           return currentHop.delayMs > maxHop.delayMs ? currentHop : maxHop;
         }, slowHops[0]);
-        notes.push("Routing delay observed: Hop " + slowest.hop + " took " + formatDuration(slowest.delayMs) + ".");
+        notes.push("Routing delay: Hop " + slowest.hop + " took " + formatDuration(slowest.delayMs) + ".");
       }
 
       if (!notes.length) {
@@ -2907,6 +2963,11 @@ If Python is not installed on this machine:
     }
 
     function formatPlainResultsReport(parsed) {
+      const listPlainText = function (list) {
+        return Array.from(list.children).map(function (item) {
+          return item.innerText || item.textContent || "";
+        }).join("\n");
+      };
       const lines = [];
       lines.push("Email Header Analyzer Results");
       lines.push("");
@@ -2927,34 +2988,33 @@ If Python is not installed on this machine:
         lines.push(label + ": " + (value || "n/a"));
       }
       lines.push("");
-      lines.push("Authentication Summary");
-      lines.push("Sender Authentication: " + ui.authPills.innerText.replace(/\n/g, "; "));
-      lines.push("Final Hop Authentication: " + ui.finalAuthPills.innerText.replace(/\n/g, "; "));
-      lines.push("Authentication Verdict");
-      lines.push(ui.authVerdict.innerText);
-      lines.push("");
       lines.push("Potential Findings");
       for (const finding of parsed.findings) {
         lines.push("- " + finding);
       }
       lines.push("");
-      lines.push("Authentication Timeline");
-      lines.push(ui.authTimeline.innerText);
-      lines.push("");
-      lines.push("Transit Analysis");
-      lines.push(ui.authTransit.innerText);
-      lines.push("");
-      lines.push("Root Cause Analysis");
-      lines.push(ui.authRootCause.innerText);
+      lines.push("Authentication Summary");
+      lines.push("Sender Authentication: " + ui.authPills.innerText.replace(/\n/g, "; "));
+      lines.push("Final Hop Authentication: " + ui.finalAuthPills.innerText.replace(/\n/g, "; "));
       lines.push("");
       lines.push("Security Signals");
       lines.push(displayedPillsPlainText(getDisplayedPillGroups().filter(function (group) {
         return group.title !== "Sender Authentication" && group.title !== "Final Hop Authentication" && group.title !== "Routing";
       })));
       lines.push("");
-      lines.push("Routing");
+      lines.push("Routing Summary");
       lines.push(displayedPillsPlainText(getDisplayedPillGroups().filter(function (group) { return group.title === "Routing"; })));
       lines.push("Route: " + buildRouteStory(parsed.hops).join(" -> "));
+      lines.push("");
+      lines.push("Detailed Analysis");
+      lines.push("Authentication Timeline");
+      lines.push(listPlainText(ui.authTimeline));
+      lines.push("");
+      lines.push("Transit Analysis");
+      lines.push(listPlainText(ui.authTransit));
+      lines.push("");
+      lines.push("Root Cause Analysis");
+      lines.push(listPlainText(ui.authRootCause));
       lines.push("");
       lines.push("Received Hop Chain");
       parsed.hops.forEach(function (hop) {
@@ -3083,23 +3143,26 @@ If Python is not installed on this machine:
         }).join("");
         return items ? "<ul style=\"margin:0 0 0 18px;padding:0;color:#102a43;\">" + items + "</ul>" : "<p style=\"margin:0;color:#486581;\">No entries.</p>";
       };
-      const authVerdictHtml = "<h4 style=\"margin:12px 0 8px;color:#12344d;\">Authentication Verdict</h4><p style=\"margin:0 0 10px;\">" + escapeHtml(ui.authVerdict.innerText).replace(/\n/g, "<br>") + "</p>";
-
       const routingHtml =
         displayedPillsHtml(pillGroups.filter(function (group) { return group.title === "Routing"; })) +
-        "<h4 style=\"margin:12px 0 8px;color:#12344d;\">Received Hop Chain</h4>" +
         "<div style=\"padding:10px 12px;border:1px solid #d8e3ee;border-radius:10px;background:#ffffff;color:#102a43;\"><strong>Route:</strong> " + escapeHtml(buildRouteStory(parsed.hops).join(" -> ")) + "</div>";
+      const detailedAnalysisHtml =
+        "<h4 style=\"margin:12px 0 8px;color:#12344d;\">Authentication Timeline</h4>" + listHtml(ui.authTimeline) +
+        "<h4 style=\"margin:12px 0 8px;color:#12344d;\">Transit Analysis</h4>" + listHtml(ui.authTransit) +
+        "<h4 style=\"margin:12px 0 8px;color:#12344d;\">Root Cause</h4>" + listHtml(ui.authRootCause) +
+        "<h4 style=\"margin:12px 0 8px;color:#12344d;\">Full Hop Chain</h4>" +
+        "<ul style=\"margin:0 0 0 18px;padding:0;color:#102a43;\">" + parsed.hops.map(function (hop) {
+          return "<li style=\"margin:0 0 6px;\">Hop #" + hop.hop + ": " + escapeHtml(routeStepForHop(hop)) + " | From: " + escapeHtml(hop.from || "n/a") + " | By: " + escapeHtml(hop.by || "n/a") + "</li>";
+        }).join("") + "</ul>";
 
       return "<div style=\"font-family:Segoe UI,Aptos,Tahoma,sans-serif;color:#102a43;line-height:1.45;background:#eef4f8;padding:18px;border-radius:16px;\">" +
         "<h2 style=\"margin:0 0 14px;color:#12344d;font-size:22px;\">Email Header Analyzer Results</h2>" +
         exportSectionHtml("Key Header Values", detailTable) +
-        exportSectionHtml("Authentication Summary", displayedPillsHtml(authSummaryGroups) + authVerdictHtml) +
         exportSectionHtml("Potential Findings", findingsList) +
-        exportSectionHtml("Authentication Timeline", listHtml(ui.authTimeline)) +
-        exportSectionHtml("Transit Analysis", listHtml(ui.authTransit)) +
-        exportSectionHtml("Root Cause Analysis", listHtml(ui.authRootCause)) +
+        exportSectionHtml("Authentication Summary", displayedPillsHtml(authSummaryGroups)) +
         exportSectionHtml("Security Signals", displayedPillsHtml(securityGroups)) +
-        exportSectionHtml("Routing", routingHtml) +
+        exportSectionHtml("Routing Summary", routingHtml) +
+        exportSectionHtml("Detailed Analysis", detailedAnalysisHtml) +
         "</div>";
     }
 
@@ -3316,7 +3379,6 @@ If Python is not installed on this machine:
       ui.routingPills.innerHTML = "";
       ui.authPills.innerHTML = "";
       ui.finalAuthPills.innerHTML = "";
-      ui.authVerdict.innerHTML = "";
       ui.authTimeline.innerHTML = "";
       ui.authTransit.innerHTML = "";
       ui.authRootCause.innerHTML = "";
@@ -3337,6 +3399,8 @@ If Python is not installed on this machine:
       ui.otherHeaders.innerHTML = "";
       resetHeaderListExpansion();
       resetHopChainExpansion();
+      ui.detailedAnalysis.open = false;
+      ui.hopDetails.open = false;
 
       const delaySeverityTone = mostSevereDelayTone(parsed.hops);
       const heuristicMailOrigin = determineMailOrigin(parsed);
@@ -3454,34 +3518,11 @@ If Python is not installed on this machine:
         });
       });
 
-      const senderPassesAll = [parsed.auth.spf, parsed.auth.dkim, parsed.auth.dmarc].every(function (value) { return value === "pass"; });
-      const verdictLines = [];
-      if (transit.originalPassesAll) {
-        verdictLines.push("Sender authenticated successfully.");
-      } else if (senderPassesAll) {
-        verdictLines.push("Sender authentication passed at the available evaluation.");
-      } else {
-        const senderFailures = [["SPF", parsed.auth.spf], ["DKIM", parsed.auth.dkim], ["DMARC", parsed.auth.dmarc]]
-          .filter(function (entry) { return entry[1] !== "pass"; })
-          .map(function (entry) { return entry[0] + " " + String(entry[1]).toUpperCase(); });
-        verdictLines.push("Sender authentication did not fully pass: " + senderFailures.join(", ") + ".");
-      }
-      if (transit.degraded) {
-        verdictLines.push("Authentication degraded after the message entered downstream mail systems.");
-      } else if (!transit.hasOriginal && [finalVerdict.spf, finalVerdict.dkim, finalVerdict.dmarc].some(function (value) { return value !== "pass" && value !== "unknown"; })) {
-        verdictLines.push("The available final-hop results include authentication failures; no original-gateway evaluation was available to determine when they began.");
-      } else if (senderPassesAll && [finalVerdict.spf, finalVerdict.dkim, finalVerdict.dmarc].every(function (value) { return value === "pass"; })) {
-        verdictLines.push("No downstream authentication failure detected.");
-      }
-      verdictLines.forEach(function (line, index) {
-        const paragraph = document.createElement("p");
-        paragraph.textContent = (index === 0 && (transit.originalPassesAll || senderPassesAll) ? "✓ " : index > 0 && transit.degraded ? "⚠ " : "") + line;
-        ui.authVerdict.appendChild(paragraph);
-      });
-
       const senderRecord = parsed.auth.senderRecord;
       const finalRecord = parsed.auth.finalRecord;
-      const authRecords = transit.records || [];
+      const authRecords = (transit.records || []).filter(function (record) {
+        return [record.spf, record.dkim, record.dmarc].some(function (value) { return value !== "unknown"; });
+      });
       const senderName = senderRecord && senderRecord.validator && senderRecord.validator !== "unknown" ? " (" + senderRecord.validator + ")" : "";
       const finalName = finalRecord && finalRecord.validator && finalRecord.validator !== "unknown" ? " (" + finalRecord.validator + ")" : "";
       const timelineRows = [];
@@ -3500,8 +3541,6 @@ If Python is not installed on this machine:
             ? (transit.hasOriginal ? "Downstream Gateway" : "Final Gateway") + finalName
             : (matchingRecord.header === "arc-authentication-results" ? "ARC Evaluation" : "Gateway Evaluation") + (matchingRecord.validator && matchingRecord.validator !== "unknown" ? " (" + matchingRecord.validator + ")" : "");
           timelineRows.push({ label: label, record: matchingRecord, hop: hop });
-        } else {
-          timelineRows.push({ label: hop.by || "Mail relay", record: null, hop: hop });
         }
       });
       authRecords.forEach(function (record) {
@@ -3518,24 +3557,18 @@ If Python is not installed on this machine:
         li.appendChild(title);
         if (row.hop) {
           const routeDetail = document.createElement("div");
-          routeDetail.textContent = "Hop #" + row.hop.hop + (row.hop.from ? " from " + row.hop.from : "") + (row.hop.by ? " to " + row.hop.by : "");
+          routeDetail.textContent = "Received Hop #" + row.hop.hop;
           li.appendChild(routeDetail);
         }
         const statuses = document.createElement("div");
         statuses.className = "auth-timeline-statuses";
-        if (row.record) {
-          [["SPF", row.record.spf], ["DKIM", row.record.dkim], ["DMARC", row.record.dmarc]].forEach(function (entry) {
-            const chip = document.createElement("span");
-            chip.className = "auth-status-chip " + classifyResult(entry[1]);
-            chip.textContent = entry[0] + " " + String(entry[1]).toUpperCase();
-            statuses.appendChild(chip);
-          });
-          li.appendChild(statuses);
-        } else {
-          const relayNote = document.createElement("div");
-          relayNote.textContent = "No Authentication-Results evaluation recorded for this hop.";
-          li.appendChild(relayNote);
-        }
+        [["SPF", row.record.spf], ["DKIM", row.record.dkim], ["DMARC", row.record.dmarc]].forEach(function (entry) {
+          const chip = document.createElement("span");
+          chip.className = "auth-status-chip " + classifyResult(entry[1]);
+          chip.textContent = entry[0] + " " + String(entry[1]).toUpperCase();
+          statuses.appendChild(chip);
+        });
+        li.appendChild(statuses);
         if (row.record === finalRecord && transit.dkimBodyHashFailed) {
           li.title = "DKIM body hash did not verify";
         } else if (row.record === finalRecord && transit.dkimFailureReason) {
@@ -3570,36 +3603,31 @@ If Python is not installed on this machine:
       });
 
       const rootCauseLines = [];
-      if (transit.hasOriginal && senderRecord) {
-        [["SPF", "spf"], ["DKIM", "dkim"], ["DMARC", "dmarc"]].forEach(function (entry) {
-          const passed = senderRecord[entry[1]] === "pass";
-          rootCauseLines.push((passed ? "✅ " : "⚠ ") + "Sender " + entry[0] + " authentication " + (passed ? "succeeded." : "returned " + senderRecord[entry[1]] + "."));
-        });
-      }
       if (transit.degraded) {
+        rootCauseLines.push(transit.originalPassesAll
+          ? "Sender authentication succeeded."
+          : "Authentication degraded after the message entered downstream mail systems.");
+        rootCauseLines.push("Likely causes:");
         if (parsed.auth.spf === "pass" && finalVerdict.spf !== "pass") {
-          rootCauseLines.push("⚠ SPF later failed because the sender was re-evaluated after relay through another mail system.");
+          rootCauseLines.push("SPF was re-evaluated after relay through another mail system.");
         }
         if (parsed.auth.dkim === "pass" && finalVerdict.dkim !== "pass") {
           rootCauseLines.push(transit.dkimBodyHashFailed
-            ? "⚠ DKIM later failed because the message body no longer matched the originally signed content."
-            : "⚠ DKIM later failed during downstream validation after passing at the original gateway.");
+            ? "Message modification caused DKIM to fail against the original signature."
+            : "DKIM failed during downstream validation after passing at the original gateway.");
         }
         if (parsed.auth.dmarc === "pass" && finalVerdict.dmarc !== "pass") {
           rootCauseLines.push(finalVerdict.spf !== "pass" && finalVerdict.dkim !== "pass"
-            ? "⚠ DMARC later failed because neither SPF nor DKIM passed during the downstream evaluation."
-            : "⚠ DMARC later failed during downstream alignment or policy evaluation.");
+            ? "DMARC failed because SPF and DKIM no longer passed downstream."
+            : "DMARC failed during downstream alignment or policy evaluation.");
         }
         if (transit.transitionHop) {
-          rootCauseLines.push("Likely authentication transition: Hop #" + transit.transitionHop.hop + " (" + (transit.transitionHop.by || transit.transitionHop.from || "receiving system") + ").");
-        } else {
-          rootCauseLines.push("The downstream authentication evaluator could not be matched to a specific Received hop.");
+          rootCauseLines.push("Likely transition: Hop #" + transit.transitionHop.hop + " (" + (transit.transitionHop.by || transit.transitionHop.from || "receiving system") + ").");
         }
       } else if (!transit.hasOriginal) {
-        rootCauseLines.push("No Authentication-Results-Original header was present; sender authentication is based on the available evaluation.");
-      }
-      if (!rootCauseLines.length) {
-        rootCauseLines.push("No authentication degradation was identified between the sender and downstream evaluations.");
+        rootCauseLines.push("No original-gateway evaluation was available to compare with the final-hop result.");
+      } else {
+        rootCauseLines.push("No authentication degradation was identified between the original and final evaluations.");
       }
       rootCauseLines.forEach(function (line) {
         const li = document.createElement("li");
