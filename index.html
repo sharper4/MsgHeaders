@@ -215,6 +215,18 @@ If Python is not installed on this machine:
       margin-bottom: 2px;
     }
 
+    .card.status-good {
+      border-color: rgba(79, 209, 161, 0.42);
+      border-left: 4px solid #4fd1a1;
+      background: linear-gradient(115deg, rgba(27, 67, 73, 0.44), rgba(15, 37, 56, 0.98) 72%);
+    }
+
+    .card.status-problem {
+      border-color: rgba(255, 126, 117, 0.48);
+      border-left: 4px solid #ff7e75;
+      background: linear-gradient(115deg, rgba(84, 39, 44, 0.5), rgba(15, 37, 56, 0.98) 72%);
+    }
+
     .card h2,
     .card h3 {
       margin: 0 0 10px;
@@ -243,10 +255,22 @@ If Python is not installed on this machine:
       margin: 10px 0 0;
       padding: 12px 14px;
       border: 1px solid rgba(184, 210, 232, 0.32);
-      border-left: 4px solid #4fd1a1;
+      border-left: 4px solid var(--line);
       border-radius: 8px;
-      background: linear-gradient(115deg, rgba(27, 67, 73, 0.94), rgba(24, 48, 67, 0.94));
+      background: rgba(10, 24, 36, 0.32);
       box-shadow: 0 12px 28px rgba(2, 10, 19, 0.24);
+    }
+
+    .auth-summary.status-good {
+      border-color: rgba(79, 209, 161, 0.42);
+      border-left-color: #4fd1a1;
+      background: linear-gradient(115deg, rgba(27, 67, 73, 0.94), rgba(24, 48, 67, 0.94));
+    }
+
+    .auth-summary.status-problem {
+      border-color: rgba(255, 126, 117, 0.48);
+      border-left-color: #ff7e75;
+      background: linear-gradient(115deg, rgba(84, 39, 44, 0.72), rgba(24, 48, 67, 0.94));
     }
 
     .auth-summary h3 {
@@ -935,7 +959,7 @@ If Python is not installed on this machine:
         </section>
       </article>
 
-      <article class="card">
+      <article id="routingSummaryCard" class="card">
         <h2 id="routingSection" class="heading-line">Routing Summary</h2>
         <div id="routingPills" class="status-row"></div>
         <div id="routeInline" class="route-inline"></div>
@@ -1007,7 +1031,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.10.05.0005";
+    const APP_BUILD = "2026.10.05.0006";
     const PAGE_COUNTER_START = 1000;
     const PAGE_COUNTER_KEY = "msgheaders-page-counter";
     let analyzedCount = PAGE_COUNTER_START;
@@ -1024,11 +1048,14 @@ If Python is not installed on this machine:
       routingPills: document.getElementById("routingPills"),
       authPills: document.getElementById("authPills"),
       finalAuthPills: document.getElementById("finalAuthPills"),
+      authSummary: document.getElementById("authSummary"),
+      authSummaryCard: document.getElementById("authSummaryCard"),
       authTimeline: document.getElementById("authTimeline"),
       authTransit: document.getElementById("authTransit"),
       authRootCause: document.getElementById("authRootCause"),
       gatewayPills: document.getElementById("gatewayPills"),
       securitySignalsCard: document.getElementById("securitySignalsCard"),
+      routingSummaryCard: document.getElementById("routingSummaryCard"),
       compauthPills: document.getElementById("compauthPills"),
       compauthSignalSection: document.getElementById("compauthSignalSection"),
       authDetailPills: document.getElementById("authDetailPills"),
@@ -2272,13 +2299,65 @@ If Python is not installed on this machine:
       return (meanings[field] && meanings[field][normalized]) || (field + " is a Microsoft diagnostic value; raw value: " + value + ".");
     }
 
+    function inferGatewayVendorName(text) {
+      const source = String(text || "").toLowerCase();
+      const vendors = [
+        { name: "Proofpoint", pattern: /proofpoint|pphosted|\bpps\b/ },
+        { name: "IronPort", pattern: /ironport|iphmx|\besa\b/ },
+        { name: "Mimecast", pattern: /mimecast/ },
+        { name: "Barracuda", pattern: /barracuda/ },
+        { name: "Microsoft", pattern: /microsoft|outlook|office365|exchange/ },
+        { name: "Google", pattern: /google|gmail/ }
+      ];
+      const match = vendors.find(function (vendor) { return vendor.pattern.test(source); });
+      return match ? match.name : "";
+    }
+
+    function inferOriginalGatewayName(auth, hops, policySignals) {
+      const record = auth && auth.senderRecord;
+      if (!record || !record.isOriginal) {
+        return "";
+      }
+
+      const validator = String(record.validator || "");
+      const validatorVendor = inferGatewayVendorName(validator);
+      if (validatorVendor) {
+        return validatorVendor;
+      }
+
+      const validatorLower = validator.toLowerCase();
+      const originalHop = (hops || []).find(function (hop) {
+        const route = (String(hop.by || "") + " " + String(hop.from || "")).toLowerCase();
+        return validatorLower && validatorLower !== "unknown" && route.includes(validatorLower);
+      });
+      const hopVendor = inferGatewayVendorName(originalHop && (originalHop.by + " " + originalHop.from));
+      if (hopVendor) {
+        return hopVendor;
+      }
+
+      const detectedVendors = policySignals && Array.isArray(policySignals.gatewayVendors)
+        ? policySignals.gatewayVendors
+        : [];
+      if (originalHop) {
+        const matchedVendor = detectedVendors.find(function (vendor) {
+          return gatewayHostMatchesVendor(originalHop.by + " " + originalHop.from, vendor);
+        });
+        if (matchedVendor) {
+          return matchedVendor;
+        }
+      }
+      return !originalHop && detectedVendors.length === 1 ? detectedVendors[0] : "";
+    }
+
     function evaluateFindings(auth, envelope, hops, policySignals, mailOrigin, headers, proofpoint) {
       const notes = [];
       const transit = auth.transit || {};
       const finalVerdict = auth.finalHopVerdict || {};
 
       if (transit.originalPassesAll) {
-        notes.push("Sender authentication passed at the original receiving gateway.");
+        const originalGatewayName = inferOriginalGatewayName(auth, hops, policySignals);
+        notes.push("Sender authentication passed at the original receiving gateway" +
+          (originalGatewayName ? " (" + originalGatewayName + ")" : "") + ".");
       } else if (transit.hasOriginal) {
         const originalFailures = [["SPF", auth.spf], ["DKIM", auth.dkim], ["DMARC", auth.dmarc]]
           .filter(function (entry) { return entry[1] !== "pass"; });
@@ -2409,6 +2488,21 @@ If Python is not installed on this machine:
         return "warn";
       }
       return "muted";
+    }
+
+    function pillTone(pill) {
+      return ["ok", "bad", "warn", "phish", "muted"].find(function (tone) {
+        return pill.classList.contains(tone);
+      }) || "muted";
+    }
+
+    function setSectionStatus(element, status) {
+      element.classList.remove("status-good", "status-problem");
+      if (status === "good") {
+        element.classList.add("status-good");
+      } else if (status === "problem") {
+        element.classList.add("status-problem");
+      }
     }
 
     function classifyGatewayPolicy(value) {
@@ -3988,6 +4082,26 @@ If Python is not installed on this machine:
       ui.securitySignalsCard.style.display = getDisplayedPillGroups().some(function (group) {
         return group.title !== "Sender Authentication" && group.title !== "Final Hop Authentication" && group.title !== "Routing" && group.pills.length > 0;
       }) ? "block" : "none";
+
+      const authPillTones = Array.from(ui.authPills.querySelectorAll(".pill")).concat(
+        Array.from(ui.finalAuthPills.querySelectorAll(".pill"))
+      ).map(pillTone);
+      const authStatus = authPillTones.includes("bad")
+        ? "problem"
+        : (authPillTones.length === 6 && authPillTones.every(function (tone) { return tone === "ok"; }) ? "good" : "neutral");
+      setSectionStatus(ui.authSummary, authStatus);
+      setSectionStatus(ui.authSummaryCard, authStatus);
+
+      const securityPillTones = Array.from(ui.securitySignalsCard.querySelectorAll(".pill")).map(pillTone);
+      const securityStatus = securityPillTones.includes("bad")
+        ? "problem"
+        : (securityPillTones.includes("ok") ? "good" : "neutral");
+      setSectionStatus(ui.securitySignalsCard, securityStatus);
+
+      const routingStatus = delaySeverityTone === "bad"
+        ? "problem"
+        : (parsed.hops.length > 0 && !delaySeverityTone ? "good" : "neutral");
+      setSectionStatus(ui.routingSummaryCard, routingStatus);
 
     }
 
