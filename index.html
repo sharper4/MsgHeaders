@@ -1031,7 +1031,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.10.05.0007";
+    const APP_BUILD = "2026.10.05.0008";
     const PAGE_COUNTER_START = 1000;
     const PAGE_COUNTER_KEY = "msgheaders-page-counter";
     let analyzedCount = PAGE_COUNTER_START;
@@ -3117,19 +3117,6 @@ If Python is not installed on this machine:
       lines.push("");
       lines.push("Root Cause Analysis");
       lines.push(listPlainText(ui.authRootCause));
-      lines.push("");
-      lines.push("Received Hop Chain");
-      parsed.hops.forEach(function (hop) {
-        lines.push(
-          "Hop #" + hop.hop + ": " + routeStepForHop(hop) +
-          " | From: " + (hop.from || "n/a") +
-          " | By: " + (hop.by || "n/a") +
-          " | IP: " + (hop.ip || "n/a") +
-          " | Protocol: " + (hop.protocol || "n/a") +
-          " | Date: " + (hop.date || "n/a") +
-          " | Delay: " + formatDuration(hop.delayMs)
-        );
-      });
       return lines.join("\n");
     }
 
@@ -3251,11 +3238,7 @@ If Python is not installed on this machine:
       const detailedAnalysisHtml =
         "<h4 style=\"margin:12px 0 8px;color:#12344d;\">Authentication Timeline</h4>" + listHtml(ui.authTimeline) +
         "<h4 style=\"margin:12px 0 8px;color:#12344d;\">Transit Analysis</h4>" + listHtml(ui.authTransit) +
-        "<h4 style=\"margin:12px 0 8px;color:#12344d;\">Root Cause</h4>" + listHtml(ui.authRootCause) +
-        "<h4 style=\"margin:12px 0 8px;color:#12344d;\">Full Hop Chain</h4>" +
-        "<ul style=\"margin:0 0 0 18px;padding:0;color:#102a43;\">" + parsed.hops.map(function (hop) {
-          return "<li style=\"margin:0 0 6px;\">Hop #" + hop.hop + ": " + escapeHtml(routeStepForHop(hop)) + " | From: " + escapeHtml(hop.from || "n/a") + " | By: " + escapeHtml(hop.by || "n/a") + "</li>";
-        }).join("") + "</ul>";
+        "<h4 style=\"margin:12px 0 8px;color:#12344d;\">Root Cause</h4>" + listHtml(ui.authRootCause);
 
       return "<div style=\"font-family:Segoe UI,Aptos,Tahoma,sans-serif;color:#102a43;line-height:1.45;background:#eef4f8;padding:18px;border-radius:16px;\">" +
         "<h2 style=\"margin:0 0 14px;color:#12344d;font-size:22px;\">Email Header Analyzer Results</h2>" +
