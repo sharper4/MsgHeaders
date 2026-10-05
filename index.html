@@ -237,6 +237,38 @@ If Python is not installed on this machine:
       margin-bottom: 8px;
     }
 
+    .auth-analysis {
+      margin: 12px 0 18px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(184, 210, 232, 0.2);
+    }
+
+    .auth-analysis h4 {
+      margin: 12px 0 6px;
+      color: #d7ebff;
+      font-size: 0.92rem;
+    }
+
+    .auth-timeline-list,
+    .auth-root-cause-list {
+      margin: 0;
+      padding-left: 20px;
+      color: #d7eaff;
+      font-size: 0.88rem;
+      line-height: 1.5;
+    }
+
+    .auth-timeline-list li,
+    .auth-root-cause-list li {
+      margin: 0 0 4px;
+    }
+
+    .auth-transition-hop {
+      outline: 2px solid #f0b44d;
+      outline-offset: -2px;
+      background: rgba(240, 180, 77, 0.12);
+    }
+
     #routingPills {
       grid-template-columns: repeat(4, minmax(0, 1fr));
     }
@@ -728,8 +760,19 @@ If Python is not installed on this machine:
       <article class="card">
         <h2 id="routingSection" class="heading-line">Routing</h2>
 
-        <h3 class="heading-line">Auth Results</h3>
+        <h3 class="heading-line">Sender Authentication Verdict</h3>
         <div id="authPills" class="status-row"></div>
+
+        <section id="authAnalysis" class="auth-analysis" aria-label="Authentication analysis">
+          <h4>Final Hop Authentication Verdict</h4>
+          <div id="finalAuthPills" class="status-row"></div>
+          <h4>Authentication Timeline</h4>
+          <ul id="authTimeline" class="auth-timeline-list"></ul>
+          <h4>Transit Analysis</h4>
+          <ul id="authTransit" class="auth-timeline-list"></ul>
+          <h4>Root Cause Analysis</h4>
+          <ul id="authRootCause" class="auth-root-cause-list"></ul>
+        </section>
 
         <section id="gatewaySectionBlock">
           <h3 class="heading-line"><span id="gatewaySectionTitle">Gateway Security Signals</span><span id="gatewayTrustNote" class="hint"></span></h3>
@@ -804,7 +847,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.09.25.0001";
+    const APP_BUILD = "2026.10.05.0001";
     const PAGE_COUNTER_START = 1000;
     const PAGE_COUNTER_KEY = "msgheaders-page-counter";
     let analyzedCount = PAGE_COUNTER_START;
@@ -820,6 +863,10 @@ If Python is not installed on this machine:
       resultsShell: document.getElementById("resultsShell"),
       routingPills: document.getElementById("routingPills"),
       authPills: document.getElementById("authPills"),
+      finalAuthPills: document.getElementById("finalAuthPills"),
+      authTimeline: document.getElementById("authTimeline"),
+      authTransit: document.getElementById("authTransit"),
+      authRootCause: document.getElementById("authRootCause"),
       gatewayPills: document.getElementById("gatewayPills"),
       gatewaySectionTitle: document.getElementById("gatewaySectionTitle"),
       gatewayTrustNote: document.getElementById("gatewayTrustNote"),
@@ -984,7 +1031,7 @@ If Python is not installed on this machine:
       };
 
       const resultNames = ["pass", "fail", "softfail", "softpass", "neutral", "temperror", "permerror", "none"];
-      const authHeaderNames = ["authentication-results", "auth-results", "arc-authentication-results"];
+      const authHeaderNames = ["authentication-results-original", "auth-results-original", "authentication-results", "auth-results", "arc-authentication-results"];
       const parseRecord = function (source, headerName, index) {
         const validatorMatch = headerName === "arc-authentication-results"
           ? source.match(/;\s*([^;\s]+)/)
@@ -995,7 +1042,7 @@ If Python is not installed on this machine:
           return match ? match[1].toLowerCase() : "unknown";
         };
         const reason = source.match(/reason\s*=\s*([0-9]+)/i);
-        return { header: headerName, index: index, validator: validator, provenance: "unknown", spf: getResult("spf"), dkim: getResult("dkim"), dmarc: getResult("dmarc"), arc: getResult("arc"), compauth: getResult("compauth"), compauthReason: reason ? reason[1] : "", raw: source };
+        return { header: headerName, index: index, validator: validator, provenance: "unknown", isOriginal: /-original$/.test(headerName), spf: getResult("spf"), dkim: getResult("dkim"), dmarc: getResult("dmarc"), arc: getResult("arc"), compauth: getResult("compauth"), compauthReason: reason ? reason[1] : "", raw: source };
       };
 
       for (const headerName of authHeaderNames) {
@@ -1032,37 +1079,47 @@ If Python is not installed on this machine:
     function selectPrimaryAuth(auth, hops, envelope, headers) {
       const finalHop = hops && hops.length ? hops[hops.length - 1] : null;
       const finalSystem = finalHop ? (finalHop.by + " " + finalHop.from).toLowerCase() : "";
-      const recipientText = [envelope && envelope.to, firstHeaderValue(headers || {}, "delivered-to")].join(" ").toLowerCase();
       const records = auth.records || [];
-      const matching = records.filter(function (record) {
-        if (record.header === "received-spf") {
-          return false;
-        }
+      const originalRecords = records.filter(function (record) {
+        return record.isOriginal;
+      });
+      const directRecords = records.filter(function (record) {
+        return record.header === "authentication-results" || record.header === "auth-results";
+      });
+      const matching = directRecords.filter(function (record) {
         const validator = (record.validator || "").toLowerCase().replace(/^\[|\]$/g, "");
         const googleMatch = validator.includes("google") && finalSystem.includes("google");
-        const googleRecipientMatch = validator.includes("google") && /@gmail\.com\b|@googlemail\.com\b/.test(recipientText);
         const microsoftMatch = /(microsoft|outlook|office365|protection\.outlook)/i.test(validator) && /(microsoft|outlook|office365|protection\.outlook)/i.test(finalSystem);
-        return validator && validator !== "unknown" && (finalSystem && (finalSystem.includes(validator) || googleMatch || microsoftMatch) || googleRecipientMatch);
+        return validator && validator !== "unknown" && finalSystem && (finalSystem.includes(validator) || googleMatch || microsoftMatch);
       });
       matching.sort(function (left, right) {
-        const leftDirect = left.header === "authentication-results" ? 1 : 0;
-        const rightDirect = right.header === "authentication-results" ? 1 : 0;
-        return leftDirect - rightDirect;
+        return (left.header === "authentication-results" ? 1 : 0) - (right.header === "authentication-results" ? 1 : 0);
       });
-      const primary = matching.length ? matching[matching.length - 1] : null;
-      if (primary) {
-        primary.provenance = "recipient-side";
-        if (primary.spf !== "unknown") auth.spf = primary.spf;
-        if (primary.dkim !== "unknown") auth.dkim = primary.dkim;
-        if (primary.dmarc !== "unknown") auth.dmarc = primary.dmarc;
-        if (primary.compauth !== "unknown") {
-          auth.compauth = primary.compauth;
-          auth.compauthReason = primary.compauthReason;
-        }
+      const finalRecord = matching.length ? matching[matching.length - 1] : (directRecords.length ? directRecords[directRecords.length - 1] : null);
+      const senderRecord = originalRecords.length ? originalRecords[0] : finalRecord;
+      auth.senderRecord = senderRecord;
+      auth.finalRecord = finalRecord;
+      auth.finalHopVerdict = finalRecord ? {
+        spf: finalRecord.spf,
+        dkim: finalRecord.dkim,
+        dmarc: finalRecord.dmarc,
+        compauth: finalRecord.compauth,
+        compauthReason: finalRecord.compauthReason
+      } : { spf: "unknown", dkim: "unknown", dmarc: "unknown", compauth: "unknown", compauthReason: "" };
+      if (senderRecord) {
+        auth.spf = senderRecord.spf;
+        auth.dkim = senderRecord.dkim;
+        auth.dmarc = senderRecord.dmarc;
+        auth.compauth = senderRecord.compauth;
+        auth.compauthReason = senderRecord.compauthReason;
       }
       for (const record of records) {
-        if (record !== primary && record.provenance === "unknown") {
-          record.provenance = "upstream";
+        if (record === finalRecord) {
+          record.provenance = "recipient-side";
+        } else if (record === senderRecord && record.isOriginal) {
+          record.provenance = "origin-gateway";
+        } else if (record.provenance === "unknown") {
+          record.provenance = record.isOriginal ? "origin-gateway" : "upstream";
         }
       }
       for (const record of (auth.receivedSpfRecords || [])) {
@@ -1072,6 +1129,27 @@ If Python is not installed on this machine:
           record.provenance = "upstream";
         }
       }
+      const senderResults = senderRecord || {};
+      const finalResults = auth.finalHopVerdict;
+      const originalPassesAll = [senderResults.spf, senderResults.dkim, senderResults.dmarc].every(function (value) { return value === "pass"; });
+      const degraded = ["spf", "dkim", "dmarc"].some(function (key) {
+        return senderResults[key] === "pass" && finalResults[key] !== "unknown" && finalResults[key] !== "pass";
+      });
+      const dkimFailure = finalRecord ? String(finalRecord.raw || "").match(/dkim\s*=\s*fail\s*\(([^)]*)\)/i) : null;
+      const dkimBodyHashFailed = Boolean(finalRecord && finalRecord.dkim === "fail" && /body\s*hash|body hash did not verify|bh\s*=\s*mismatch/i.test(finalRecord.raw || ""));
+      const finalValidator = String(finalRecord && finalRecord.validator || "").toLowerCase().replace(/^\[|\]$/g, "");
+      const transitionHop = finalValidator ? (hops || []).find(function (hop) {
+        return (String(hop.by || "") + " " + String(hop.from || "")).toLowerCase().includes(finalValidator);
+      }) || null : null;
+      auth.transit = {
+        hasOriginal: originalRecords.length > 0,
+        originalPassesAll: originalPassesAll,
+        degraded: Boolean(originalRecords.length && degraded),
+        dkimBodyHashFailed: dkimBodyHashFailed,
+        dkimFailureReason: dkimFailure ? dkimFailure[1].trim() : "",
+        transitionHop: transitionHop,
+        records: records.filter(function (record) { return record.header !== "received-spf"; })
+      };
       return auth;
     }
 
@@ -1118,8 +1196,8 @@ If Python is not installed on this machine:
     }
 
     const HEADER_SECURITY_PATTERNS = [
-      /^authentication-results$/,
-      /^auth-results$/,
+      /^authentication-results(?:-original)?$/,
+      /^auth-results(?:-original)?$/,
       /^received-spf$/,
       /^arc-/,
       /^dkim-signature$/,
@@ -2045,9 +2123,44 @@ If Python is not installed on this machine:
       ];
       for (const [label, key, valueRaw] of authChecks) {
         const value = (valueRaw || "unknown").toLowerCase();
+        if (key === "compauth" && value === "unknown") {
+          continue;
+        }
         if (value !== "pass") {
           hasNonPassAuth = true;
           notes.push(label + " result: " + value + " - " + authMeaning(key, value));
+        }
+      }
+
+      const transit = auth.transit || {};
+      if (transit.degraded) {
+        notes.push("Authentication degradation during transit.");
+        if (transit.originalPassesAll) {
+          notes.push("Original sender authentication passed. Authentication failures were introduced later in the mail path.");
+        }
+        if (auth.spf === "pass" && auth.finalHopVerdict.spf === "softfail") {
+          notes.push("SPF later failed because the message was relayed by another mail system.");
+        }
+        if (auth.dkim === "pass" && auth.finalHopVerdict.dkim === "fail") {
+          if (transit.dkimBodyHashFailed) {
+            notes.push("The message was likely modified after DKIM signing. The signature was valid when originally evaluated but no longer matched the message body during later validation.");
+          } else {
+            notes.push("DKIM later failed during downstream validation after passing at the original gateway.");
+          }
+        }
+        if (auth.dmarc === "pass" && auth.finalHopVerdict.dmarc === "fail") {
+          notes.push(auth.finalHopVerdict.spf !== "pass" && auth.finalHopVerdict.dkim !== "pass"
+            ? "DMARC later failed because neither SPF nor DKIM passed during the downstream evaluation."
+            : "DMARC later failed during downstream alignment or policy evaluation.");
+        }
+        if (transit.transitionHop) {
+          notes.push("Likely authentication transition occurred at Received Hop #" + transit.transitionHop.hop + " (" + (transit.transitionHop.by || transit.transitionHop.from || "receiving system") + ").");
+        }
+        if (transit.originalPassesAll) {
+          const fromValue = String(envelope.from || "").toLowerCase();
+          notes.push(/@(?:gmail|googlemail)\.com\b/.test(fromValue)
+            ? "The sender authenticated correctly. SPF, DKIM, and DMARC were validated successfully by the first receiving gateway. Authentication failures occurred later in the mail path after relaying and/or message modification. Do not classify this as a Gmail authentication issue."
+            : "The sender authenticated correctly. SPF, DKIM, and DMARC passed at the first receiving gateway; later failures occurred during transit. This does not indicate a sender-side authentication problem.");
         }
       }
 
@@ -2807,7 +2920,8 @@ If Python is not installed on this machine:
 
     function getDisplayedPillGroups() {
       return [
-        { title: "Auth Results", container: ui.authPills },
+        { title: "Sender Authentication Verdict", container: ui.authPills },
+        { title: "Final Hop Authentication Verdict", container: ui.finalAuthPills },
         { title: ui.gatewaySectionTitle.textContent || "Gateway Security Signals", container: ui.gatewayPills },
         { title: "Microsoft Security Signals", container: ui.microsoftPills, section: ui.microsoftSectionBlock },
         { title: "IronPort Security Signals", container: ui.ironportPills, section: ui.ironportSectionBlock },
@@ -3095,6 +3209,10 @@ If Python is not installed on this machine:
     function renderSummary(parsed) {
       ui.routingPills.innerHTML = "";
       ui.authPills.innerHTML = "";
+      ui.finalAuthPills.innerHTML = "";
+      ui.authTimeline.innerHTML = "";
+      ui.authTransit.innerHTML = "";
+      ui.authRootCause.innerHTML = "";
       ui.gatewayPills.innerHTML = "";
       ui.gatewayTrustNote.textContent = "";
       ui.microsoftPills.innerHTML = "";
@@ -3212,6 +3330,118 @@ If Python is not installed on this machine:
         hint: "DMARC = Domain-based Message Authentication, Reporting, and Conformance. pass = aligned sender identity; fail = policy/auth alignment failed. Click to jump to Authentication-Results.",
         headerKeys: ["authentication-results", "auth-results"],
         fallbackId: "spamSection"
+      });
+
+      const finalVerdict = parsed.auth.finalHopVerdict;
+      [["SPF", "spf"], ["DKIM", "dkim"], ["DMARC", "dmarc"]].forEach(function (entry) {
+        renderActionPill(ui.finalAuthPills, entry[0] + ": " + finalVerdict[entry[1]], classifyResult(finalVerdict[entry[1]]), {
+          type: "jumpHeader",
+          hint: "Final-hop " + entry[0] + " result reported by " + ((parsed.auth.finalRecord && parsed.auth.finalRecord.validator) || "the latest receiving evaluation") + ". Click to inspect authentication headers.",
+          headerKeys: ["authentication-results", "auth-results"],
+          fallbackId: "spamSection"
+        });
+      });
+
+      const transit = parsed.auth.transit || {};
+      const senderRecord = parsed.auth.senderRecord;
+      const finalRecord = parsed.auth.finalRecord;
+      const authRecords = transit.records || [];
+      const senderName = senderRecord && senderRecord.validator && senderRecord.validator !== "unknown" ? " (" + senderRecord.validator + ")" : "";
+      const finalName = finalRecord && finalRecord.validator && finalRecord.validator !== "unknown" ? " (" + finalRecord.validator + ")" : "";
+      const timelineRows = [];
+      if (transit.hasOriginal && senderRecord) {
+        timelineRows.push({ label: "Original Gateway Evaluation" + senderName, record: senderRecord });
+      }
+      if (finalRecord) {
+        timelineRows.push({ label: transit.hasOriginal ? "Downstream Evaluation" + finalName : "Final Gateway Evaluation" + finalName, record: finalRecord });
+      }
+      authRecords.forEach(function (record) {
+        if (record !== senderRecord && record !== finalRecord) {
+          timelineRows.push({ label: (record.header === "arc-authentication-results" ? "ARC Evaluation" : "Additional Gateway Evaluation") + (record.validator && record.validator !== "unknown" ? " (" + record.validator + ")" : ""), record: record });
+        }
+      });
+      timelineRows.forEach(function (row) {
+        const li = document.createElement("li");
+        li.textContent = row.label + ": SPF " + row.record.spf + ", DKIM " + row.record.dkim + ", DMARC " + row.record.dmarc;
+        if (row.record === finalRecord && transit.dkimBodyHashFailed) {
+          li.textContent += " (DKIM body hash did not verify)";
+        } else if (row.record === finalRecord && transit.dkimFailureReason) {
+          li.textContent += " (" + transit.dkimFailureReason + ")";
+        }
+        ui.authTimeline.appendChild(li);
+      });
+      if (!timelineRows.length) {
+        const li = document.createElement("li");
+        li.textContent = "No Authentication-Results evaluations were found.";
+        ui.authTimeline.appendChild(li);
+      }
+
+      const transitRows = [];
+      if (transit.hasOriginal && finalRecord) {
+        [["SPF", "spf"], ["DKIM", "dkim"], ["DMARC", "dmarc"]].forEach(function (entry) {
+          const initial = senderRecord[entry[1]];
+          const later = finalRecord[entry[1]];
+          if (initial === "pass" && later !== "unknown" && later !== "pass") {
+            let detail = entry[0] + ": " + later.charAt(0).toUpperCase() + later.slice(1) + " after downstream re-evaluation";
+            if (entry[1] === "spf" && later === "softfail") {
+              detail = "SPF: SoftFail after relay";
+            } else if (entry[1] === "dkim" && later === "fail" && transit.dkimBodyHashFailed) {
+              detail = "DKIM: Failed because body hash did not verify";
+            } else if (entry[1] === "dmarc" && later === "fail") {
+              detail = "DMARC: Failed after downstream re-evaluation";
+            }
+            transitRows.push("⚠ " + detail);
+          }
+        });
+      }
+      if (!transitRows.length) {
+        transitRows.push(transit.hasOriginal ? "No authentication degradation was identified between the original and final evaluations." : "Transit comparison is unavailable without Authentication-Results-Original.");
+      }
+      transitRows.forEach(function (line) {
+        const li = document.createElement("li");
+        li.textContent = line;
+        ui.authTransit.appendChild(li);
+      });
+
+      const rootCauseLines = [];
+      if (transit.hasOriginal && senderRecord) {
+        [["SPF", "spf"], ["DKIM", "dkim"], ["DMARC", "dmarc"]].forEach(function (entry) {
+          const passed = senderRecord[entry[1]] === "pass";
+          rootCauseLines.push((passed ? "✅ " : "⚠ ") + "Sender " + entry[0] + " authentication " + (passed ? "succeeded." : "returned " + senderRecord[entry[1]] + "."));
+        });
+      }
+      if (transit.degraded) {
+        if (parsed.auth.spf === "pass" && finalVerdict.spf !== "pass") {
+          rootCauseLines.push("⚠ SPF later failed because the message was relayed by another mail system.");
+        }
+        if (parsed.auth.dkim === "pass" && finalVerdict.dkim !== "pass") {
+          rootCauseLines.push(transit.dkimBodyHashFailed
+            ? "⚠ The message was likely modified after DKIM signing. The signature was valid when originally evaluated but no longer matched the message body during later validation."
+            : "⚠ DKIM later failed during downstream validation after passing at the original gateway.");
+        }
+        if (parsed.auth.dmarc === "pass" && finalVerdict.dmarc !== "pass") {
+          rootCauseLines.push(finalVerdict.spf !== "pass" && finalVerdict.dkim !== "pass"
+            ? "⚠ DMARC later failed because neither SPF nor DKIM passed during the downstream evaluation."
+            : "⚠ DMARC later failed during downstream alignment or policy evaluation.");
+        }
+        if (transit.transitionHop) {
+          rootCauseLines.push("Likely authentication transition: Hop #" + transit.transitionHop.hop + " (" + (transit.transitionHop.by || transit.transitionHop.from || "receiving system") + ").");
+        } else {
+          rootCauseLines.push("The downstream authentication evaluator could not be matched to a specific Received hop.");
+        }
+        if (transit.originalPassesAll) {
+          const fromValue = String(parsed.envelope.from || "").toLowerCase();
+          rootCauseLines.push(/@(?:gmail|googlemail)\.com\b/.test(fromValue)
+            ? "The sender authenticated correctly. SPF, DKIM, and DMARC were validated successfully by the first receiving gateway. Authentication failures occurred later in the mail path after relaying and/or message modification. Do not classify this as a Gmail authentication issue."
+            : "The sender authenticated correctly. SPF, DKIM, and DMARC passed at the first receiving gateway; later failures occurred during transit. This does not indicate a sender-side authentication problem.");
+        }
+      } else if (!transit.hasOriginal) {
+        rootCauseLines.push("No Authentication-Results-Original header was present; sender authentication is based on the available evaluation.");
+      }
+      rootCauseLines.forEach(function (line) {
+        const li = document.createElement("li");
+        li.textContent = line;
+        ui.authRootCause.appendChild(li);
       });
       const compauthHint = "CompAuth = Composite Authentication (Microsoft). pass indicates overall identity confidence; fail indicates elevated suspicion." +
         (parsed.auth.compauthReason ? " Reason code: " + parsed.auth.compauthReason + "." : "") +
@@ -3513,6 +3743,10 @@ If Python is not installed on this machine:
       for (const hop of parsed.hops) {
         const tr = document.createElement("tr");
         tr.dataset.hop = String(hop.hop);
+        if (parsed.auth.transit && parsed.auth.transit.transitionHop === hop) {
+          tr.classList.add("auth-transition-hop");
+          tr.title = "Likely authentication transition: final-hop evaluator matched this Received hop.";
+        }
         const delayTone = hopDelayTone(hop.delayMs);
         if (delayTone) {
           tr.classList.add("hop-delay-" + delayTone);
