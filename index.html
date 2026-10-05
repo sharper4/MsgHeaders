@@ -293,7 +293,13 @@ If Python is not installed on this machine:
 
     .detailed-analysis-content {
       display: grid;
+      grid-template-columns: minmax(0, 1fr);
       gap: 14px;
+      min-width: 0;
+    }
+
+    .detailed-analysis-content > * {
+      min-width: 0;
     }
 
     .detailed-analysis-content h3,
@@ -337,6 +343,8 @@ If Python is not installed on this machine:
     .auth-timeline-node {
       position: relative;
       padding: 8px 10px;
+      min-width: 0;
+      overflow-wrap: anywhere;
       border: 1px solid rgba(184, 210, 232, 0.24);
       border-radius: 6px;
       background: rgba(10, 24, 36, 0.38);
@@ -403,7 +411,7 @@ If Python is not installed on this machine:
     }
 
     .pill {
-      border-radius: 14px;
+      border-radius: 6px;
       padding: 6px 12px;
       font-size: 0.82rem;
       font-weight: 700;
@@ -538,6 +546,10 @@ If Python is not installed on this machine:
       box-shadow: inset 0 0 0 1px #6fa3ce;
       color: #f3fbff;
       animation: attentionPulse 1s ease-in-out 5;
+    }
+
+    #hopTable tr {
+      scroll-margin-top: 12px;
     }
 
     #hopTable tr.attention td:first-child {
@@ -877,8 +889,11 @@ If Python is not installed on this machine:
         <h3 class="heading-line with-action"><span>Potential Findings</span><button id="copyFindingsBtn" class="section-toggle" type="button">Copy Findings</button></h3>
         <ul id="findings" class="flags"></ul>
 
+      </article>
+
+      <article id="authSummaryCard" class="card">
+        <h2>Authentication Summary</h2>
         <section id="authSummary" class="auth-summary" aria-label="Authentication Summary">
-          <h3>Authentication Summary</h3>
           <div class="auth-lane-label">Sender Authentication</div>
           <div id="authPills" class="status-row"></div>
           <div class="auth-lane-label">Final Hop Authentication</div>
@@ -992,7 +1007,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.10.05.0004";
+    const APP_BUILD = "2026.10.05.0005";
     const PAGE_COUNTER_START = 1000;
     const PAGE_COUNTER_KEY = "msgheaders-page-counter";
     let analyzedCount = PAGE_COUNTER_START;
@@ -3330,6 +3345,8 @@ If Python is not installed on this machine:
       if (!row) {
         return;
       }
+      ui.detailedAnalysis.open = true;
+      ui.hopDetails.open = true;
       if (!ui.hopTableWrap.classList.contains("expanded")) {
         toggleHopChain();
       }
@@ -3357,7 +3374,8 @@ If Python is not installed on this machine:
       const row = findHopRow(hopNumber);
       if (row) {
         ensureHopRowVisible(row);
-        row.scrollIntoView({ behavior: "smooth", block: "center" });
+        const alignment = row.getBoundingClientRect().height > window.innerHeight ? "start" : "center";
+        row.scrollIntoView({ behavior: "instant", block: alignment });
         highlightHopRow(row);
         return;
       }
@@ -3475,13 +3493,15 @@ If Python is not installed on this machine:
       );
 
       const alignment = getAlignmentSignals(parsed.auth, parsed.envelope, parsed.headers);
+      const senderAuthHeader = parsed.auth.senderRecord && parsed.auth.senderRecord.header;
+      const finalAuthHeader = parsed.auth.finalRecord && parsed.auth.finalRecord.header;
 
       const spfPrimaryLabel = "SPF: " + String(parsed.auth.spf).toUpperCase();
 
       renderActionPill(ui.authPills, spfPrimaryLabel, classifyResult(parsed.auth.spf), {
         type: "jumpHeader",
         hint: "SPF = Sender Policy Framework. pass = sender identity validated; fail = high suspicion; softfail = investigate; none = common, but worth investigating. Click to jump to Authentication-Results.",
-        headerKeys: ["authentication-results", "auth-results", "received-spf"],
+        headerKeys: [senderAuthHeader, "received-spf", "authentication-results", "auth-results"].filter(Boolean),
         fallbackId: "spamSection"
       });
 
@@ -3490,13 +3510,13 @@ If Python is not installed on this machine:
       renderActionPill(ui.authPills, dkimPrimaryLabel, classifyResult(parsed.auth.dkim), {
         type: "jumpHeader",
         hint: "DKIM = DomainKeys Identified Mail. pass = signature validated; fail = mismatch or potential tampering; none = unsigned. Click to jump to Authentication-Results.",
-        headerKeys: ["authentication-results", "auth-results", "dkim-signature"],
+        headerKeys: [senderAuthHeader, "dkim-signature", "authentication-results", "auth-results"].filter(Boolean),
         fallbackId: "spamSection"
       });
       renderActionPill(ui.authPills, "DMARC: " + String(parsed.auth.dmarc).toUpperCase(), classifyResult(parsed.auth.dmarc), {
         type: "jumpHeader",
         hint: "DMARC = Domain-based Message Authentication, Reporting, and Conformance. pass = aligned sender identity; fail = policy/auth alignment failed. Click to jump to Authentication-Results.",
-        headerKeys: ["authentication-results", "auth-results"],
+        headerKeys: [senderAuthHeader, "authentication-results", "auth-results"].filter(Boolean),
         fallbackId: "spamSection"
       });
 
@@ -3506,7 +3526,7 @@ If Python is not installed on this machine:
         renderActionPill(ui.finalAuthPills, entry[0] + ": " + String(finalVerdict[entry[1]]).toUpperCase(), classifyResult(finalVerdict[entry[1]]), {
           type: "jumpHeader",
           hint: "Final-hop " + entry[0] + " result reported by " + ((parsed.auth.finalRecord && parsed.auth.finalRecord.validator) || "the latest receiving evaluation") + ". Click to inspect authentication headers.",
-          headerKeys: ["authentication-results", "auth-results"],
+          headerKeys: [finalAuthHeader, "authentication-results", "auth-results"].filter(Boolean),
           fallbackId: "spamSection"
         });
       });
