@@ -1031,7 +1031,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.10.05.0006";
+    const APP_BUILD = "2026.10.05.0007";
     const PAGE_COUNTER_START = 1000;
     const PAGE_COUNTER_KEY = "msgheaders-page-counter";
     let analyzedCount = PAGE_COUNTER_START;
@@ -4083,12 +4083,12 @@ If Python is not installed on this machine:
         return group.title !== "Sender Authentication" && group.title !== "Final Hop Authentication" && group.title !== "Routing" && group.pills.length > 0;
       }) ? "block" : "none";
 
-      const authPillTones = Array.from(ui.authPills.querySelectorAll(".pill")).concat(
-        Array.from(ui.finalAuthPills.querySelectorAll(".pill"))
-      ).map(pillTone);
-      const authStatus = authPillTones.includes("bad")
+      const senderAuthTones = Array.from(ui.authPills.querySelectorAll(".pill")).map(pillTone);
+      const authStatus = parsed.auth.transit.originalPassesAll
+        ? "good"
+        : (senderAuthTones.includes("bad")
         ? "problem"
-        : (authPillTones.length === 6 && authPillTones.every(function (tone) { return tone === "ok"; }) ? "good" : "neutral");
+        : (senderAuthTones.length === 3 && senderAuthTones.every(function (tone) { return tone === "ok"; }) ? "good" : "neutral"));
       setSectionStatus(ui.authSummary, authStatus);
       setSectionStatus(ui.authSummaryCard, authStatus);
 
