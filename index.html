@@ -1031,7 +1031,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.10.05.0008";
+    const APP_BUILD = "2026.10.05.0009";
     const PAGE_COUNTER_START = 1000;
     const PAGE_COUNTER_KEY = "msgheaders-page-counter";
     let analyzedCount = PAGE_COUNTER_START;
@@ -1290,7 +1290,7 @@ If Python is not installed on this machine:
         return (left.header === "authentication-results" ? 1 : 0) - (right.header === "authentication-results" ? 1 : 0);
       });
       const finalRecord = matching.length ? matching[matching.length - 1] : (directRecords.length ? directRecords[directRecords.length - 1] : null);
-      const senderRecord = originalRecords.length ? originalRecords[0] : finalRecord;
+      const senderRecord = originalRecords.length ? originalRecords[originalRecords.length - 1] : finalRecord;
       auth.senderRecord = senderRecord;
       auth.finalRecord = finalRecord;
       auth.finalHopVerdict = finalRecord ? {
@@ -1313,7 +1313,7 @@ If Python is not installed on this machine:
         } else if (record === senderRecord && record.isOriginal) {
           record.provenance = "origin-gateway";
         } else if (record.provenance === "unknown") {
-          record.provenance = record.isOriginal ? "origin-gateway" : "upstream";
+          record.provenance = "upstream";
         }
       }
       for (const record of (auth.receivedSpfRecords || [])) {
@@ -2302,7 +2302,7 @@ If Python is not installed on this machine:
     function inferGatewayVendorName(text) {
       const source = String(text || "").toLowerCase();
       const vendors = [
-        { name: "Proofpoint", pattern: /proofpoint|pphosted|\bpps\b/ },
+        { name: "Proofpoint", pattern: /proofpoint|pphosted|ppops|\bpps\b/ },
         { name: "IronPort", pattern: /ironport|iphmx|\besa\b/ },
         { name: "Mimecast", pattern: /mimecast/ },
         { name: "Barracuda", pattern: /barracuda/ },
@@ -2680,7 +2680,7 @@ If Python is not installed on this machine:
       if (source.includes("outlook.office365.com")) {
         return "EXO (Exchange Online)";
       }
-      if (source.includes("proofpoint") || source.includes("pphosted") || source.includes("pps")) {
+      if (source.includes("proofpoint") || source.includes("pphosted") || source.includes("ppops") || source.includes("pps")) {
         return "Proofpoint";
       }
       if (source.includes("ironport")) {
@@ -3630,13 +3630,33 @@ If Python is not installed on this machine:
           const label = isSenderEvaluation ? "Original Gateway" + senderName : isFinalEvaluation
             ? (transit.hasOriginal ? "Downstream Gateway" : "Final Gateway") + finalName
             : (matchingRecord.header === "arc-authentication-results" ? "ARC Evaluation" : "Gateway Evaluation") + (matchingRecord.validator && matchingRecord.validator !== "unknown" ? " (" + matchingRecord.validator + ")" : "");
-          timelineRows.push({ label: label, record: matchingRecord, hop: hop });
+          timelineRows.push({ label: label, record: matchingRecord, hop: hop, sequence: timelineRows.length });
         }
       });
       authRecords.forEach(function (record) {
         if (!usedAuthRecords.has(record)) {
-          timelineRows.push({ label: (record.header === "arc-authentication-results" ? "ARC Evaluation" : "Authentication Evaluation") + (record.validator && record.validator !== "unknown" ? " (" + record.validator + ")" : ""), record: record, hop: null });
+          const evaluationLabel = record === senderRecord && record.isOriginal
+            ? "Original Gateway"
+            : record === finalRecord
+              ? (transit.hasOriginal ? "Downstream Gateway" : "Final Gateway")
+              : record.isOriginal
+                ? "Downstream Re-evaluation"
+                : (record.header === "arc-authentication-results" ? "ARC Evaluation" : "Authentication Evaluation");
+          timelineRows.push({
+            label: evaluationLabel + (record.validator && record.validator !== "unknown" ? " (" + record.validator + ")" : ""),
+            record: record,
+            hop: null,
+            sequence: timelineRows.length
+          });
         }
+      });
+      timelineRows.sort(function (left, right) {
+        const rank = function (row) {
+          if (row.record === senderRecord && row.record.isOriginal) return 0;
+          if (row.record === finalRecord) return 2;
+          return 1;
+        };
+        return rank(left) - rank(right) || left.sequence - right.sequence;
       });
       timelineRows.forEach(function (row) {
         const li = document.createElement("li");
