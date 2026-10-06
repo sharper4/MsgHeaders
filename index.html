@@ -944,9 +944,43 @@ If Python is not installed on this machine:
       </article>
 
       <article id="routingSummaryCard" class="card">
-        <h2 id="routingSection" class="heading-line">Routing Summary</h2>
+        <h2 id="routingSection" class="heading-line with-action"><span>Routing Summary</span><button id="copyRouteBtn" class="section-toggle" type="button" title="Copy route path">Copy Path</button></h2>
         <div id="routingPills" class="status-row"></div>
         <div id="routeInline" class="route-inline"></div>
+      </article>
+
+      <article class="card">
+        <details id="hopDetails" class="hop-disclosure">
+          <summary>Full Hop Chain</summary>
+          <h3 class="heading-line with-action"><span>Received Hop Chain</span><button id="toggleHopChain" class="section-toggle" type="button">Show More</button></h3>
+          <div id="hopTableWrap" class="table-wrap">
+            <table aria-label="Received hop details">
+              <colgroup>
+                <col class="hop-col-hop" />
+                <col class="hop-col-route-step" />
+                <col class="hop-col-from" />
+                <col class="hop-col-by" />
+                <col class="hop-col-ip" />
+                <col class="hop-col-protocol" />
+                <col class="hop-col-date" />
+                <col class="hop-col-delay" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th scope="col" title="Hop number in the order listed by headers">Hop</th>
+                  <th scope="col" title="Generic path step derived from this hop">Route Step</th>
+                  <th scope="col" title="Server that handed off the message">From</th>
+                  <th scope="col" title="Server that received the message">By</th>
+                  <th scope="col" title="Observed IPv4 address for this hop">IP</th>
+                  <th scope="col" title="Transport protocol reported for this hop">Protocol</th>
+                  <th scope="col" title="Timestamp recorded by this receiving server">Date</th>
+                  <th scope="col" title="Time elapsed between this hop and the previous hop">Delay</th>
+                </tr>
+              </thead>
+              <tbody id="hopTable"></tbody>
+            </table>
+          </div>
+        </details>
       </article>
 
       <article class="card">
@@ -961,37 +995,6 @@ If Python is not installed on this machine:
               <h3>Root Cause</h3>
               <ul id="authRootCause" class="auth-root-cause-list"></ul>
             </section>
-            <details id="hopDetails" class="hop-disclosure">
-              <summary>Full Hop Chain</summary>
-              <h3 class="heading-line with-action"><span>Received Hop Chain</span><button id="toggleHopChain" class="section-toggle" type="button">Show More</button></h3>
-              <div id="hopTableWrap" class="table-wrap">
-                <table aria-label="Received hop details">
-                  <colgroup>
-                    <col class="hop-col-hop" />
-                    <col class="hop-col-route-step" />
-                    <col class="hop-col-from" />
-                    <col class="hop-col-by" />
-                    <col class="hop-col-ip" />
-                    <col class="hop-col-protocol" />
-                    <col class="hop-col-date" />
-                    <col class="hop-col-delay" />
-                  </colgroup>
-                  <thead>
-                    <tr>
-                      <th scope="col" title="Hop number in the order listed by headers">Hop</th>
-                      <th scope="col" title="Generic path step derived from this hop">Route Step</th>
-                      <th scope="col" title="Server that handed off the message">From</th>
-                      <th scope="col" title="Server that received the message">By</th>
-                      <th scope="col" title="Observed IPv4 address for this hop">IP</th>
-                      <th scope="col" title="Transport protocol reported for this hop">Protocol</th>
-                      <th scope="col" title="Timestamp recorded by this receiving server">Date</th>
-                      <th scope="col" title="Time elapsed between this hop and the previous hop">Delay</th>
-                    </tr>
-                  </thead>
-                  <tbody id="hopTable"></tbody>
-                </table>
-              </div>
-            </details>
           </div>
         </details>
       </article>
@@ -1016,7 +1019,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.10.05.0010";
+    const APP_BUILD = "2026.10.06.0001";
     const PAGE_COUNTER_START = 1000;
     const PAGE_COUNTER_KEY = "msgheaders-page-counter";
     let analyzedCount = PAGE_COUNTER_START;
@@ -1028,6 +1031,7 @@ If Python is not installed on this machine:
       sampleBtn: document.getElementById("sampleBtn"),
       copyResultsBtn: document.getElementById("copyResultsBtn"),
       copyFindingsBtn: document.getElementById("copyFindingsBtn"),
+      copyRouteBtn: document.getElementById("copyRouteBtn"),
       scrollTopBtn: document.getElementById("scrollTopBtn"),
       resultsShell: document.getElementById("resultsShell"),
       routingPills: document.getElementById("routingPills"),
@@ -1275,7 +1279,35 @@ If Python is not installed on this machine:
         return (left.header === "authentication-results" ? 1 : 0) - (right.header === "authentication-results" ? 1 : 0);
       });
       const finalRecord = matching.length ? matching[matching.length - 1] : (directRecords.length ? directRecords[directRecords.length - 1] : null);
-      const senderRecord = originalRecords.length ? originalRecords[originalRecords.length - 1] : finalRecord;
+      const originalRecordHopIndex = function (record) {
+        const validator = String(record.validator || "").toLowerCase().replace(/^\[|\]$/g, "");
+        if (!validator || validator === "unknown") {
+          return -1;
+        }
+        const exactHop = (hops || []).findIndex(function (hop) {
+          return (String(hop.by || "") + " " + String(hop.from || "")).toLowerCase().includes(validator);
+        });
+        if (exactHop >= 0) {
+          return exactHop;
+        }
+        const vendor = inferGatewayVendorName(validator);
+        if (!vendor) {
+          return -1;
+        }
+        return (hops || []).findIndex(function (hop) {
+          return gatewayHostMatchesVendor(String(hop.by || "") + " " + String(hop.from || ""), vendor);
+        });
+      };
+      const routeMatchedOriginals = originalRecords.map(function (record, index) {
+        return { record: record, index: index, hopIndex: originalRecordHopIndex(record) };
+      }).filter(function (entry) {
+        return entry.hopIndex >= 0;
+      }).sort(function (left, right) {
+        return left.hopIndex - right.hopIndex || left.index - right.index;
+      });
+      const senderRecord = routeMatchedOriginals.length
+        ? routeMatchedOriginals[0].record
+        : (originalRecords.length ? originalRecords[0] : finalRecord);
       auth.senderRecord = senderRecord;
       auth.finalRecord = finalRecord;
       auth.finalHopVerdict = finalRecord ? {
@@ -2889,6 +2921,16 @@ If Python is not installed on this machine:
       }
     }
 
+    async function copyRoutingPath() {
+      if (!currentParsed) {
+        setButtonFeedback(ui.copyRouteBtn, "No Path", "No Path");
+        return;
+      }
+      const routePath = buildRouteStory(currentParsed.hops).join(" > ");
+      const copied = await copyToClipboard(routePath);
+      setButtonFeedback(ui.copyRouteBtn, copied ? "Copied" : "Copy failed", "Copy failed");
+    }
+
     async function copyClipboardPayload(plainText, htmlText) {
       try {
         if (htmlText && window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
@@ -3407,7 +3449,6 @@ If Python is not installed on this machine:
       if (!row) {
         return;
       }
-      ui.detailedAnalysis.open = true;
       ui.hopDetails.open = true;
       if (!ui.hopTableWrap.classList.contains("expanded")) {
         toggleHopChain();
@@ -4192,6 +4233,7 @@ If Python is not installed on this machine:
     });
     ui.copyResultsBtn.addEventListener("click", copyResultsReport);
     ui.copyFindingsBtn.addEventListener("click", copyFindingsReport);
+    ui.copyRouteBtn.addEventListener("click", copyRoutingPath);
     ui.scrollTopBtn.addEventListener("click", function () {
       document.querySelector(".hero").scrollIntoView({ behavior: "smooth", block: "start" });
     });
