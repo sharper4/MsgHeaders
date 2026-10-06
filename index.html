@@ -651,30 +651,14 @@ If Python is not installed on this machine:
       text-transform: uppercase;
     }
 
-    .hop-col-hop {
-      width: 52px;
-    }
-
+    .hop-col-hop { width: 4%; }
+    .hop-col-route-step { width: 16%; }
     .hop-col-from,
-    .hop-col-by {
-      width: 23%;
-    }
-
-    .hop-col-ip {
-      width: 120px;
-    }
-
-    .hop-col-protocol {
-      width: 220px;
-    }
-
-    .hop-col-date {
-      width: 210px;
-    }
-
-    .hop-col-delay {
-      width: 120px;
-    }
+    .hop-col-by { width: 20%; }
+    .hop-col-ip { width: 9%; }
+    .hop-col-protocol { width: 10%; }
+    .hop-col-date { width: 14%; }
+    .hop-col-delay { width: 7%; }
 
     .flags {
       margin: 0;
@@ -984,10 +968,11 @@ If Python is not installed on this machine:
                 <table aria-label="Received hop details">
                   <colgroup>
                     <col class="hop-col-hop" />
-                    <col class="hop-col-protocol" />
+                    <col class="hop-col-route-step" />
                     <col class="hop-col-from" />
                     <col class="hop-col-by" />
                     <col class="hop-col-ip" />
+                    <col class="hop-col-protocol" />
                     <col class="hop-col-date" />
                     <col class="hop-col-delay" />
                   </colgroup>
@@ -1031,7 +1016,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.10.05.0009";
+    const APP_BUILD = "2026.10.05.0010";
     const PAGE_COUNTER_START = 1000;
     const PAGE_COUNTER_KEY = "msgheaders-page-counter";
     let analyzedCount = PAGE_COUNTER_START;
