@@ -904,8 +904,10 @@ If Python is not installed on this machine:
         <section id="authSummary" class="auth-summary" aria-label="Authentication Summary">
           <div class="auth-lane-label">Sender Authentication</div>
           <div id="authPills" class="status-row"></div>
-          <div class="auth-lane-label">Final Hop Authentication</div>
-          <div id="finalAuthPills" class="status-row"></div>
+          <div id="finalAuthLane">
+            <div class="auth-lane-label">Final Hop Authentication</div>
+            <div id="finalAuthPills" class="status-row"></div>
+          </div>
         </section>
       </article>
 
@@ -1019,7 +1021,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.10.07.0001";
+    const APP_BUILD = "2026.10.07.0002";
     const PAGE_COUNTER_START = 1000;
     const PAGE_COUNTER_KEY = "msgheaders-page-counter";
     let analyzedCount = PAGE_COUNTER_START;
@@ -1037,6 +1039,7 @@ If Python is not installed on this machine:
       routingPills: document.getElementById("routingPills"),
       authPills: document.getElementById("authPills"),
       finalAuthPills: document.getElementById("finalAuthPills"),
+      finalAuthLane: document.getElementById("finalAuthLane"),
       authSummary: document.getElementById("authSummary"),
       authSummaryCard: document.getElementById("authSummaryCard"),
       authTimeline: document.getElementById("authTimeline"),
@@ -3130,7 +3133,9 @@ If Python is not installed on this machine:
       lines.push("");
       lines.push("Authentication Summary");
       lines.push("Sender Authentication: " + ui.authPills.innerText.replace(/\n/g, "; "));
-      lines.push("Final Hop Authentication: " + ui.finalAuthPills.innerText.replace(/\n/g, "; "));
+      if (ui.finalAuthLane.style.display !== "none") {
+        lines.push("Final Hop Authentication: " + ui.finalAuthPills.innerText.replace(/\n/g, "; "));
+      }
       lines.push("");
       lines.push("Security Signals");
       lines.push(displayedPillsPlainText(getDisplayedPillGroups().filter(function (group) {
@@ -3187,7 +3192,7 @@ If Python is not installed on this machine:
     function getDisplayedPillGroups() {
       return [
         { title: "Sender Authentication", container: ui.authPills },
-        { title: "Final Hop Authentication", container: ui.finalAuthPills },
+        { title: "Final Hop Authentication", container: ui.finalAuthPills, section: ui.finalAuthLane },
         { title: ui.gatewaySectionTitle.textContent || "Gateway Security Signals", container: ui.gatewayPills },
         { title: "Composite Authentication", container: ui.compauthPills, section: ui.compauthSignalSection },
         { title: "Authentication Alignment", container: ui.authDetailPills, section: ui.authDetailSection },
@@ -3631,6 +3636,8 @@ If Python is not installed on this machine:
 
       const finalVerdict = parsed.auth.finalHopVerdict;
       const transit = parsed.auth.transit || {};
+      const senderRecord = parsed.auth.senderRecord;
+      const finalRecord = parsed.auth.finalRecord;
       [["SPF", "spf"], ["DKIM", "dkim"], ["DMARC", "dmarc"]].forEach(function (entry) {
         renderActionPill(ui.finalAuthPills, entry[0] + ": " + String(finalVerdict[entry[1]]).toUpperCase(), classifyResult(finalVerdict[entry[1]]), {
           type: "jumpHeader",
@@ -3639,9 +3646,14 @@ If Python is not installed on this machine:
           fallbackId: "spamSection"
         });
       });
+      const hasDifferentFinalEvaluation = Boolean(senderRecord && finalRecord && finalRecord !== senderRecord &&
+        [["spf", senderRecord.spf], ["dkim", senderRecord.dkim], ["dmarc", senderRecord.dmarc]].some(function (entry) {
+          const finalValue = finalRecord[entry[0]] || "unknown";
+          const senderValue = entry[1] || "unknown";
+          return finalValue !== senderValue && (finalValue !== "unknown" || senderValue !== "unknown");
+        }));
+      ui.finalAuthLane.style.display = hasDifferentFinalEvaluation ? "block" : "none";
 
-      const senderRecord = parsed.auth.senderRecord;
-      const finalRecord = parsed.auth.finalRecord;
       const authRecords = (transit.records || []).filter(function (record) {
         return [record.spf, record.dkim, record.dmarc].some(function (value) { return value !== "unknown"; });
       });
