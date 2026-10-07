@@ -1019,7 +1019,7 @@ If Python is not installed on this machine:
   </main>
 
     <script>
-    const APP_BUILD = "2026.10.06.0001";
+    const APP_BUILD = "2026.10.06.0002";
     const PAGE_COUNTER_START = 1000;
     const PAGE_COUNTER_KEY = "msgheaders-page-counter";
     let analyzedCount = PAGE_COUNTER_START;
@@ -2370,8 +2370,14 @@ If Python is not installed on this machine:
       const notes = [];
       const transit = auth.transit || {};
       const finalVerdict = auth.finalHopVerdict || {};
+      const isInternalMessage = Boolean(mailOrigin && mailOrigin.value === "Internal");
 
-      if (transit.originalPassesAll) {
+      if (isInternalMessage && !transit.degraded) {
+        notes.push("Internal Exchange message detected (AuthAs=Internal). SPF/DKIM/DMARC results here are not evidence of an external sender-authentication failure.");
+        if (auth.dkim === "none" || auth.dmarc === "none") {
+          notes.push("DKIM and DMARC were not evaluated for this message (none).");
+        }
+      } else if (transit.originalPassesAll) {
         const originalGatewayName = inferOriginalGatewayName(auth, hops, policySignals);
         notes.push("Sender authentication passed at the original receiving gateway" +
           (originalGatewayName ? " (" + originalGatewayName + ")" : "") + ".");
@@ -2383,7 +2389,7 @@ If Python is not installed on this machine:
             return entry[0] + " " + String(entry[1]).toUpperCase();
           }).join(", ") + ".");
         }
-      } else if ([auth.spf, auth.dkim, auth.dmarc].some(function (value) { return value !== "pass" && value !== "unknown"; })) {
+      } else if (!isInternalMessage && [auth.spf, auth.dkim, auth.dmarc].some(function (value) { return value !== "pass" && value !== "unknown" && value !== "none"; })) {
         notes.push("Authentication failures appear in the available final-hop results; no original-gateway evaluation was found.");
       }
       if (transit.degraded) {
@@ -2407,7 +2413,7 @@ If Python is not installed on this machine:
       }
 
       const compauth = String(auth.compauth || "unknown").toLowerCase();
-      if (compauth !== "unknown" && compauth !== "pass") {
+      if (compauth !== "unknown" && compauth !== "pass" && !(isInternalMessage && compauth === "none")) {
         notes.push("CompAuth result: " + compauth + " - " + authMeaning("compauth", compauth));
       }
 
@@ -3760,6 +3766,8 @@ If Python is not installed on this machine:
         if (transit.transitionHop) {
           rootCauseLines.push("Likely transition: Hop #" + transit.transitionHop.hop + " (" + (transit.transitionHop.by || transit.transitionHop.from || "receiving system") + ").");
         }
+      } else if (determineMailOrigin(parsed).value === "Internal") {
+        rootCauseLines.push("Internal Exchange submission; missing SPF or DKIM/DMARC none results do not indicate an external sender-authentication failure.");
       } else if (!transit.hasOriginal) {
         rootCauseLines.push("No original-gateway evaluation was available to compare with the final-hop result.");
       } else {
